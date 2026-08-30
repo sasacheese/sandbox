@@ -1,0 +1,648 @@
+/*
+ * 「運営」の見た目。
+ *
+ * 方針を 4 つ。
+ *
+ * 1. **地は夜。紙は運営の持ち物。** 画面はほぼ真っ黒で、明るい面が出るのは
+ *    指令が降りているときだけ。高札（お触書）が夜に一枚貼られている、という
+ *    絵にしている。参加者の側には面が与えられない——入力欄も枠線だけ。
+ * 2. **運営の言葉は明朝。** UI の文字はゴシック。書体が違うだけで「これは
+ *    人の書いた文ではない」が伝わる。この一手が世界観の半分を担っている。
+ * 3. **色は運営が決める。** アクセント色は CSS 変数で、運営の布告が実行時に
+ *    書き換える。利用者が選べる設定は一つも無い。
+ * 4. **機嫌が下がると世界から色が抜ける。** 罰は与えない。ただ褪せる。
+ */
+
+:root {
+  color-scheme: dark;
+
+  --ground: #0c0c0e;
+  --ground-2: #141417;
+  --ground-3: #1c1c20;
+  /* 高札の紙。運営が何かを告げるときだけ現れる */
+  --paper: #e6e2d8;
+  --paper-ink: #16161a;
+  --text: #dedad1;
+  --text-dim: #a5a199;
+  --muted: #7e7a73;
+  --faint: #56534e;
+  --line: rgb(230 226 216 / 0.12);
+  --line-strong: rgb(230 226 216 / 0.26);
+
+  /* 布告で書き換わる。既定は朱 */
+  --accent: #c8452e;
+
+  --radius: 3px;
+  --pad: 16px;
+  --measure: 480px;
+
+  --sans: -apple-system, BlinkMacSystemFont, 'Hiragino Sans', 'Noto Sans JP', system-ui, sans-serif;
+  --serif: 'Hiragino Mincho ProN', 'Yu Mincho', 'Noto Serif JP', serif;
+  --mono: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, monospace;
+}
+
+* {
+  box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  background: var(--ground);
+  color: var(--text);
+}
+
+body {
+  font-family: var(--sans);
+  font-size: 15px;
+  line-height: 1.7;
+  -webkit-font-smoothing: antialiased;
+  touch-action: manipulation;
+  overscroll-behavior-y: none;
+}
+
+button,
+input,
+textarea {
+  font: inherit;
+  color: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+h1,
+h2,
+p {
+  margin: 0;
+}
+
+.app {
+  max-width: var(--measure);
+  min-width: 320px;
+  margin: 0 auto;
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  /* 機嫌が尽きると世界から色が抜ける。罰ではなく、ただ褪せる */
+  transition: filter 1.2s linear;
+}
+
+.app--dying {
+  filter: saturate(0.25);
+}
+
+.screen {
+  flex: 1;
+  padding: calc(env(safe-area-inset-top) + 10px) var(--pad) 92px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+/* ------------------------------------------------------------- 上端 */
+
+.topbar {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--line);
+}
+
+.realm {
+  font-family: var(--serif);
+  font-size: 17px;
+  letter-spacing: 0.06em;
+}
+
+.label {
+  font-family: var(--mono);
+  font-size: 9.5px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.sub {
+  font-size: 12.5px;
+  color: var(--muted);
+}
+
+/* ------------------------------------------------------------- 機嫌 */
+
+.mood {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.mood__bar {
+  height: 3px;
+  background: var(--ground-3);
+  overflow: hidden;
+}
+
+.mood__fill {
+  height: 100%;
+  background: var(--accent);
+  transition: width 900ms ease-out;
+}
+
+.mood__row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.mood__text {
+  font-family: var(--serif);
+  font-size: 13.5px;
+  color: var(--text-dim);
+}
+
+.mood__num {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--faint);
+  font-variant-numeric: tabular-nums;
+}
+
+/* --------------------------------------------------------- 高札（指令） */
+
+.edict {
+  background: var(--paper);
+  color: var(--paper-ink);
+  border-radius: var(--radius);
+  padding: 22px 18px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  box-shadow: 0 18px 40px rgb(0 0 0 / 0.5);
+  animation: post 500ms cubic-bezier(0.2, 0.8, 0.3, 1) both;
+}
+
+@keyframes post {
+  from {
+    opacity: 0;
+    transform: translateY(-10px) rotate(-0.4deg);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.edict__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  border-bottom: 1px solid rgb(22 22 26 / 0.18);
+  padding-bottom: 8px;
+}
+
+.edict__no {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: rgb(22 22 26 / 0.55);
+}
+
+.edict__when {
+  font-family: var(--mono);
+  font-size: 22px;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+}
+
+.edict__where {
+  font-family: var(--serif);
+  font-size: 21px;
+  line-height: 1.4;
+}
+
+.edict__condition {
+  font-family: var(--serif);
+  font-size: 16px;
+  line-height: 1.85;
+  border-top: 1px solid rgb(22 22 26 / 0.18);
+  border-bottom: 1px solid rgb(22 22 26 / 0.18);
+  padding: 12px 0;
+}
+
+.edict__meta {
+  display: flex;
+  gap: 14px;
+  font-size: 11.5px;
+  color: rgb(22 22 26 / 0.6);
+  font-variant-numeric: tabular-nums;
+}
+
+.countdown {
+  font-family: var(--mono);
+  font-size: 34px;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+  text-align: center;
+}
+
+.countdown--passed {
+  color: var(--accent);
+}
+
+/* ------------------------------------------------------- 運営の言葉 */
+
+.oracle {
+  font-family: var(--serif);
+  font-size: 16px;
+  line-height: 1.9;
+  color: var(--text);
+  border-left: 2px solid var(--accent);
+  padding: 2px 0 2px 14px;
+}
+
+.oracle--quiet {
+  border-left-color: var(--line-strong);
+  color: var(--text-dim);
+}
+
+.thinking {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--mono);
+  font-size: 9.5px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+
+@keyframes breathe {
+  0%,
+  100% {
+    opacity: 0.25;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+.thinking__dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+  animation: breathe 2.4s ease-in-out infinite;
+}
+
+/* ------------------------------------------------------------ 押す物 */
+
+.btn {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 15px 16px;
+  border: 1px solid var(--text);
+  border-radius: var(--radius);
+  background: var(--text);
+  color: var(--ground);
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.btn:active {
+  transform: translateY(1px);
+}
+
+.btn--ghost {
+  background: transparent;
+  color: var(--text);
+  border-color: var(--line-strong);
+  font-weight: 500;
+}
+
+/* 入力欄の横に置く小さな押し物。縦に折り返させない */
+.btn--inline {
+  width: auto;
+  flex: none;
+  white-space: nowrap;
+  padding: 0 18px;
+}
+
+.btn--accent {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.btn--quiet {
+  background: transparent;
+  border-color: transparent;
+  color: var(--muted);
+  font-weight: 500;
+  padding: 12px;
+}
+
+.btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.btn__hint {
+  font-family: var(--mono);
+  font-size: 9.5px;
+  letter-spacing: 0.14em;
+  opacity: 0.7;
+}
+
+.actions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* ------------------------------------------------------------- 入力 */
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.input,
+.textarea {
+  width: 100%;
+  padding: 12px;
+  background: var(--ground-2);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  outline: none;
+}
+
+.input:focus,
+.textarea:focus {
+  border-color: var(--text-dim);
+}
+
+.textarea {
+  min-height: 96px;
+  resize: vertical;
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.chip {
+  padding: 7px 11px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  background: transparent;
+  font-size: 13px;
+  color: var(--text-dim);
+}
+
+.chip--on {
+  background: var(--text);
+  border-color: var(--text);
+  color: var(--ground);
+}
+
+.stepper {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.stepper__value {
+  font-family: var(--mono);
+  font-size: 28px;
+  font-variant-numeric: tabular-nums;
+  min-width: 48px;
+  text-align: center;
+}
+
+/* ------------------------------------------------------------- 記録 */
+
+.rows {
+  display: flex;
+  flex-direction: column;
+}
+
+.row {
+  display: flex;
+  gap: 12px;
+  padding: 14px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.row:last-child {
+  border-bottom: none;
+}
+
+.row__mark {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  color: var(--faint);
+  width: 42px;
+  flex: none;
+  padding-top: 4px;
+}
+
+.row__body {
+  flex: 1;
+  min-width: 0;
+}
+
+.row__title {
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.row__title--oracle {
+  font-family: var(--serif);
+  font-size: 15px;
+}
+
+.row__meta {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  color: var(--faint);
+  font-variant-numeric: tabular-nums;
+  margin-top: 2px;
+}
+
+.stamp {
+  display: inline-block;
+  font-family: var(--mono);
+  font-size: 9.5px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  border: 1px solid currentColor;
+  border-radius: 2px;
+  padding: 1px 6px;
+  margin-right: 8px;
+}
+
+.stamp--accepted {
+  color: var(--accent);
+}
+
+.stamp--rejected {
+  color: var(--text-dim);
+}
+
+.photo {
+  width: 100%;
+  border-radius: var(--radius);
+  border: 1px solid var(--line);
+  margin-top: 8px;
+}
+
+/* -------------------------------------------------------------- 掟 */
+
+.laws {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.law {
+  display: flex;
+  gap: 12px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--line);
+  font-family: var(--serif);
+  font-size: 15px;
+  line-height: 1.7;
+}
+
+.law__no {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  color: var(--faint);
+  padding-top: 5px;
+}
+
+.notice {
+  border: 1px solid var(--accent);
+  border-radius: var(--radius);
+  padding: 12px;
+  color: var(--accent);
+  font-size: 13px;
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+}
+
+.notice__title {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  font-weight: 600;
+}
+
+.empty {
+  padding: 44px 12px;
+  text-align: center;
+  color: var(--muted);
+  font-family: var(--serif);
+  font-size: 15px;
+}
+
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* ------------------------------------------------------------- タブ */
+
+.tabbar {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 5;
+  display: flex;
+  max-width: var(--measure);
+  margin: 0 auto;
+  background: color-mix(in srgb, var(--ground) 92%, transparent);
+  backdrop-filter: blur(8px);
+  border-top: 1px solid var(--line);
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+.tab {
+  flex: 1;
+  background: none;
+  border: none;
+  padding: 12px 4px 13px;
+  color: var(--faint);
+  font-family: var(--serif);
+  font-size: 13px;
+  letter-spacing: 0.1em;
+}
+
+.tab--on {
+  color: var(--text);
+}
+
+.tab__dot {
+  display: block;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--accent);
+  margin: 3px auto 0;
+}
+
+/* ------------------------------------------------------------- 入信 */
+
+.enroll {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 20px;
+  padding: 32px var(--pad) calc(env(safe-area-inset-bottom) + 24px);
+  max-width: var(--measure);
+  margin: 0 auto;
+  width: 100%;
+}
+
+.enroll__title {
+  font-family: var(--serif);
+  font-size: 27px;
+  line-height: 1.5;
+  letter-spacing: 0.04em;
+}
+
+.enroll__lede {
+  font-family: var(--serif);
+  font-size: 15px;
+  line-height: 2;
+  color: var(--text-dim);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .edict,
+  .thinking__dot {
+    animation: none;
+  }
+
+  .edict {
+    opacity: 1;
+    transform: none;
+  }
+}
