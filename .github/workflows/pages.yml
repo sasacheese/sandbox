@@ -8,6 +8,8 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+  # 別のワークフロー（コミュニティの生成）から呼ばれる
+  workflow_call:
 
 permissions:
   contents: read

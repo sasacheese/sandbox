@@ -1,0 +1,560 @@
+/*
+ * 「よみち」の見た目。
+ *
+ * ここは作品の仕掛けを見せる場所ではなく、**ふつうの小さなコミュニティ**に
+ * 見えないと成立しない。だから方針は「変わったことをしない」に尽きる。
+ *
+ * 1. 明るい地に黒い字。夜の散歩の話をしているが、画面まで夜にしない
+ *    （夜を演出した瞬間に「作品」の顔になる）。
+ * 2. 装飾を足さない。影も、グラデーションも、角の大きな丸みも使わない。
+ *    どこかで見たことのある掲示板の顔でいい。
+ * 3. 色は一つだけ。街灯の橙。自分に関わるもの（自分の投稿・押した心・参加する）
+ *    にだけ付ける。他人の投稿には色を使わない。
+ * 4. 住人の見分けは、頭文字と色相だけ。画像を持たせない。
+ */
+
+:root {
+  color-scheme: light dark;
+
+  --paper: #faf7f2;
+  --card: #ffffff;
+  --line: #e6e1d8;
+  --line-soft: #efebe4;
+  --ink: #23211e;
+  --ink-dim: #57534d;
+  --muted: #8a857d;
+  --faint: #b0aba3;
+  --lamp: #c9722a;
+  --lamp-soft: #fdf1e5;
+
+  --radius: 10px;
+  --radius-sm: 7px;
+  --pad: 14px;
+  --measure: 560px;
+
+  --sans: -apple-system, BlinkMacSystemFont, 'Hiragino Sans', 'Noto Sans JP', system-ui, sans-serif;
+  --mono: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, monospace;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --paper: #16181a;
+    --card: #1e2124;
+    --line: #2e3236;
+    --line-soft: #262a2d;
+    --ink: #e7e4de;
+    --ink-dim: #b6b2ab;
+    --muted: #8b8781;
+    --faint: #6b6862;
+    --lamp: #e0913f;
+    --lamp-soft: #2a2118;
+  }
+}
+
+* {
+  box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  background: var(--paper);
+  color: var(--ink);
+}
+
+body {
+  font-family: var(--sans);
+  font-size: 15px;
+  line-height: 1.7;
+  -webkit-font-smoothing: antialiased;
+  touch-action: manipulation;
+}
+
+button,
+input,
+textarea {
+  font: inherit;
+  color: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+h1,
+h2,
+h3,
+p {
+  margin: 0;
+}
+
+.app {
+  max-width: var(--measure);
+  min-width: 320px;
+  margin: 0 auto;
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+}
+
+.screen {
+  flex: 1;
+  padding: calc(env(safe-area-inset-top) + 8px) var(--pad) 88px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* --------------------------------------------------------------- 見出し */
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 6px 2px 10px;
+  border-bottom: 1px solid var(--line);
+}
+
+.header__title {
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.header__sub {
+  font-size: 11.5px;
+  color: var(--muted);
+}
+
+.label {
+  font-size: 11.5px;
+  color: var(--muted);
+}
+
+.sub {
+  font-size: 12.5px;
+  color: var(--muted);
+}
+
+/* --------------------------------------------------------------- 投稿 */
+
+.post {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 13px 14px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+
+.post--mine {
+  border-color: color-mix(in srgb, var(--lamp) 40%, var(--line));
+}
+
+.post__head {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+
+.avatar {
+  width: 30px;
+  height: 30px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  font-size: 13px;
+  font-weight: 600;
+  color: #fff;
+}
+
+.avatar--sm {
+  width: 22px;
+  height: 22px;
+  font-size: 10.5px;
+}
+
+.post__author {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.post__time {
+  margin-left: auto;
+  font-size: 11.5px;
+  color: var(--faint);
+}
+
+.post__body {
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 15px;
+  line-height: 1.8;
+}
+
+.post__photo {
+  width: 100%;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--line);
+}
+
+.post__foot {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding-top: 2px;
+}
+
+.act {
+  background: none;
+  border: none;
+  padding: 6px 8px;
+  border-radius: var(--radius-sm);
+  font-size: 12.5px;
+  color: var(--muted);
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.act:hover {
+  background: var(--line-soft);
+}
+
+.act--on {
+  color: var(--lamp);
+}
+
+/* 返信。左の細い罫だけでスレッドに見せる */
+.replies {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  border-left: 2px solid var(--line);
+  padding-left: 11px;
+  margin-left: 4px;
+}
+
+.reply {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.reply__head {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.reply__author {
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.reply__time {
+  font-size: 11px;
+  color: var(--faint);
+  margin-left: auto;
+}
+
+.reply__body {
+  font-size: 14px;
+  line-height: 1.75;
+  white-space: pre-wrap;
+  word-break: break-word;
+  padding-left: 29px;
+}
+
+.replybox {
+  display: flex;
+  gap: 8px;
+  align-items: flex-end;
+}
+
+/* --------------------------------------------------------------- 入力 */
+
+.composer {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+
+.input,
+.textarea {
+  width: 100%;
+  padding: 10px 11px;
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  outline: none;
+}
+
+.input:focus,
+.textarea:focus {
+  border-color: var(--lamp);
+}
+
+.textarea {
+  min-height: 76px;
+  resize: vertical;
+  line-height: 1.75;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.row--end {
+  justify-content: flex-end;
+}
+
+.btn {
+  padding: 10px 16px;
+  border: 1px solid var(--lamp);
+  border-radius: var(--radius-sm);
+  background: var(--lamp);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.btn:active {
+  transform: translateY(1px);
+}
+
+.btn--ghost {
+  background: transparent;
+  color: var(--ink);
+  border-color: var(--line);
+  font-weight: 500;
+}
+
+.btn--wide {
+  width: 100%;
+  display: block;
+  text-align: center;
+}
+
+.btn--quiet {
+  background: transparent;
+  border-color: transparent;
+  color: var(--muted);
+  font-weight: 500;
+}
+
+.btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.filepick {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+/* --------------------------------------------------------------- 集まり */
+
+.gathering {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+
+.gathering--next {
+  border-color: var(--lamp);
+  background: var(--lamp-soft);
+}
+
+.gathering__when {
+  font-size: 17px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.gathering__place {
+  font-size: 14px;
+}
+
+.gathering__meta {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.faces {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+/* --------------------------------------------------------------- 一覧 */
+
+.list {
+  display: flex;
+  flex-direction: column;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.list__row {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 12px 13px;
+  border-bottom: 1px solid var(--line-soft);
+}
+
+.list__row:last-child {
+  border-bottom: none;
+}
+
+.list__body {
+  flex: 1;
+  min-width: 0;
+}
+
+.list__title {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.list__meta {
+  font-size: 11.5px;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.list__count {
+  font-size: 13px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.tag {
+  font-size: 10.5px;
+  color: var(--lamp);
+  border: 1px solid var(--lamp);
+  border-radius: 999px;
+  padding: 0 6px;
+  white-space: nowrap;
+}
+
+.empty {
+  padding: 36px 12px;
+  text-align: center;
+  color: var(--muted);
+  font-size: 13.5px;
+}
+
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+
+.section__head {
+  font-size: 12px;
+  color: var(--muted);
+  padding: 6px 2px 0;
+}
+
+/* --------------------------------------------------------------- タブ */
+
+.tabbar {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 5;
+  display: flex;
+  max-width: var(--measure);
+  margin: 0 auto;
+  background: color-mix(in srgb, var(--paper) 94%, transparent);
+  backdrop-filter: blur(10px);
+  border-top: 1px solid var(--line);
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+.tab {
+  flex: 1;
+  background: none;
+  border: none;
+  padding: 10px 4px 11px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  color: var(--faint);
+  font-size: 11px;
+}
+
+.tab--on {
+  color: var(--lamp);
+}
+
+.tab__mark {
+  font-size: 16px;
+  line-height: 1.2;
+}
+
+/* --------------------------------------------------------------- 入口 */
+
+.enter {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 16px;
+  padding: 32px var(--pad) calc(env(safe-area-inset-bottom) + 24px);
+  max-width: 420px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+.enter__mark {
+  width: 44px;
+  height: 44px;
+}
+
+.enter__title {
+  font-size: 24px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.enter__lede {
+  font-size: 14px;
+  line-height: 1.9;
+  color: var(--ink-dim);
+}
+
+.notice {
+  border: 1px solid var(--line);
+  background: var(--card);
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+  font-size: 12.5px;
+  color: var(--ink-dim);
+}
