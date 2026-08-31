@@ -64,13 +64,19 @@ export function App() {
     );
   }
 
-  // 未読の合計。タブの右上に出す
-  const unread = (kind: 'mine' | 'proxy'): number =>
-    (kind === 'mine' ? store.mine : store.proxies).reduce((sum, thread) => {
+  /*
+   * タブの印は、**新着のあるトークの数**。
+   *
+   * 通数を足すと、代理のほうは数分で 99+ に張り付いて何も言わなくなる
+   * （実際になった）。件数なら上限が相手の人数を超えないので、増えていることが
+   * 最後まで読める。一通ずつの数は、一覧の行のほうに出ている。
+   */
+  const waiting = (kind: 'mine' | 'proxy'): number =>
+    (kind === 'mine' ? store.mine : store.proxies).filter((thread) => {
       const bubbles = bubblesOf(thread, store.now);
-      // 未回答の確認も数に入れる。放っておくと代理人が埋めてしまうため
-      return sum + unreadOf(thread, bubbles) + pendingAsksOf(bubbles);
-    }, 0);
+      // 未回答の確認も新着に数える。放っておくと代理が埋めてしまうため
+      return unreadOf(thread, bubbles) > 0 || pendingAsksOf(bubbles) > 0;
+    }).length;
 
   return (
     <div className="app">
@@ -80,7 +86,7 @@ export function App() {
       {tab === 'proxy' ? store.lab ? <ChatList kind="proxy" onOpen={setOpenId} /> : <Lab /> : null}
       {tab === 'friends' ? <Friends onOpen={setOpenId} /> : null}
       {tab === 'settings' ? <Settings /> : null}
-      <TabBar current={tab} onChange={setTab} badges={{ mine: unread('mine'), proxy: unread('proxy') }} />
+      <TabBar current={tab} onChange={setTab} badges={{ mine: waiting('mine'), proxy: store.lab ? waiting('proxy') : 0 }} />
     </div>
   );
 }

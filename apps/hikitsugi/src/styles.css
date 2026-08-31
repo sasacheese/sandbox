@@ -943,7 +943,8 @@ p {
 }
 
 .pad {
-  padding: 16px var(--pad) 44px;
+  /* 下端はタブバーの下へ潜るので、その高さぶんだけ空けておく */
+  padding: 16px var(--pad) calc(env(safe-area-inset-bottom) + 108px);
   display: flex;
   flex-direction: column;
   gap: 16px;
@@ -1822,7 +1823,7 @@ p {
 .tally {
   position: relative;
   margin: 13px var(--pad) 4px;
-  padding: 16px 17px 15px;
+  padding: 18px 18px 16px;
   border-radius: var(--r-card);
   background: var(--paper);
   overflow: hidden;
@@ -1866,24 +1867,35 @@ p {
 
 .tally__note {
   position: relative;
-  margin-top: 10px;
+  margin-top: 14px;
   font-size: 11.5px;
   line-height: 1.7;
   color: var(--muted);
 }
 
+/*
+ * 二つの数字は上下に積む。
+ *
+ * 横に並べると、左右で言葉の長さが違うぶん数字の位置がずれて、比べるための
+ * 二つが比べにくくなる（実際にずれて見えた）。**右端で揃える**ほうが読める。
+ */
 .tally__rows {
   position: relative;
   display: flex;
-  justify-content: space-between;
-  gap: 14px;
-  margin-top: 13px;
+  flex-direction: column;
+  margin-top: 16px;
 }
 
 .tally__row {
   display: flex;
   align-items: baseline;
-  gap: 9px;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 9px 0;
+}
+
+.tally__row + .tally__row {
+  border-top: 1px solid var(--rule);
 }
 
 .tally__key {
@@ -1910,8 +1922,11 @@ p {
 }
 
 .tally__num {
+  flex: none;
+  min-width: 42px;
+  text-align: right;
   font-family: var(--mono);
-  font-size: 20px;
+  font-size: 22px;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
   transition: color 300ms ease-out;
