@@ -25,7 +25,14 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
+      # ブランチの先端を取る。
+      #
+      # 既定では**起動のきっかけになった時点**の commit を取るので、
+      # コミュニティの生成ワークフローから呼ばれたとき、生成した内容が
+      # 入る前の状態をビルドして配ってしまう（実際に取りこぼした）。
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref }}
       - uses: actions/setup-node@v4
         with:
           node-version: 22
