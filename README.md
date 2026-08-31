@@ -3,6 +3,7 @@
 作品のプロトタイプを置いて、スマートフォンから触るための場所。`apps/` の下にあるものを GitHub Actions が全部ビルドして、GitHub Pages に並べる。
 
 - 一覧 https://sasacheese.github.io/sandbox/
+- 関係引継サービス https://sasacheese.github.io/sandbox/hikitsugi/ — AI が本人として関係を築き、引継書として渡す
 - よみち https://sasacheese.github.io/sandbox/yomichi/ — 夜の散歩のコミュニティ。住人は全員 AI
 - 運営 https://sasacheese.github.io/sandbox/unei/ — 運営が AI になったコミュニティ
 

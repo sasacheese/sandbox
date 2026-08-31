@@ -1,0 +1,825 @@
+/*
+ * 「関係引継サービス」の見た目。
+ *
+ * 方針は一つ——**書類に見えること**。
+ *
+ * 1. 地は事務用の紙。暗い側は用意しない。書類に夜の顔は無い。
+ * 2. 引継書の本文は明朝、画面の部品はゴシック。読むものと操作するものを
+ *    書体で分ける。契約書の体裁がそのまま不気味さになる。
+ * 3. 色は二つ。墨と、代行の茶。**茶が付いているものは、本人が作ったのではない**
+ *    という規則で徹底する（作り話・漏らした情報・代行の記録）。
+ * 4. 罫線で仕切る。カードを浮かせない。影を使わない。
+ */
+
+:root {
+  color-scheme: light;
+
+  --paper: #f4f1ea;
+  --sheet: #fbf9f5;
+  --ink: #2b2721;
+  --ink-dim: #57514a;
+  --muted: #857e75;
+  --faint: #b4ada3;
+  --rule: #ddd6c9;
+  --rule-strong: #c3baa9;
+
+  /* 代行の色。本人の手によらないものに付ける */
+  --proxy: #8f6a3d;
+  --proxy-soft: #f2e9dc;
+  --warn: #a3402f;
+
+  --radius: 3px;
+  --pad: 16px;
+  --measure: 520px;
+
+  --sans: -apple-system, BlinkMacSystemFont, 'Hiragino Sans', 'Noto Sans JP', system-ui, sans-serif;
+  --serif: 'Hiragino Mincho ProN', 'Yu Mincho', 'Noto Serif JP', serif;
+  --mono: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, monospace;
+}
+
+* {
+  box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  background: var(--paper);
+  color: var(--ink);
+}
+
+body {
+  font-family: var(--sans);
+  font-size: 15px;
+  line-height: 1.75;
+  -webkit-font-smoothing: antialiased;
+  touch-action: manipulation;
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+  color: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+h1,
+h2,
+h3,
+p {
+  margin: 0;
+}
+
+.app {
+  max-width: var(--measure);
+  min-width: 320px;
+  margin: 0 auto;
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+}
+
+.screen {
+  flex: 1;
+  padding: calc(env(safe-area-inset-top) + 10px) var(--pad) 96px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.screen--flow {
+  padding-bottom: calc(env(safe-area-inset-bottom) + 24px);
+}
+
+/* ------------------------------------------------------------ 見出し */
+
+.brand {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--rule-strong);
+}
+
+.brand__name {
+  font-family: var(--serif);
+  font-size: 15px;
+  letter-spacing: 0.14em;
+}
+
+.brand__no {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  letter-spacing: 0.1em;
+  color: var(--muted);
+}
+
+.label {
+  font-family: var(--mono);
+  font-size: 9.5px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.ja-label {
+  font-size: 11.5px;
+  color: var(--muted);
+  letter-spacing: 0.04em;
+}
+
+.sub {
+  font-size: 12.5px;
+  color: var(--muted);
+}
+
+.serif {
+  font-family: var(--serif);
+}
+
+/* 書類の本文。ここだけ明朝で組む */
+.doc {
+  font-family: var(--serif);
+  font-size: 15.5px;
+  line-height: 2;
+}
+
+/* ------------------------------------------------------------ 表紙 */
+
+.cover {
+  border: 1px solid var(--rule-strong);
+  border-radius: var(--radius);
+  background: var(--sheet);
+  padding: 22px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.cover__title {
+  font-family: var(--serif);
+  font-size: 27px;
+  letter-spacing: 0.12em;
+  line-height: 1.4;
+}
+
+.cover__rows {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  border-top: 1px solid var(--rule);
+}
+
+.kv {
+  display: flex;
+  gap: 12px;
+  padding: 9px 0;
+  border-bottom: 1px solid var(--rule);
+  font-size: 13.5px;
+}
+
+.kv__key {
+  width: 116px;
+  flex: none;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.kv__value {
+  flex: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.seal {
+  align-self: flex-end;
+  border: 2px solid var(--warn);
+  color: var(--warn);
+  border-radius: var(--radius);
+  padding: 6px 10px;
+  transform: rotate(-4deg);
+  text-align: center;
+}
+
+.seal__main {
+  font-family: var(--serif);
+  font-size: 13px;
+  letter-spacing: 0.16em;
+  font-weight: 600;
+}
+
+.seal__sub {
+  font-family: var(--mono);
+  font-size: 8.5px;
+  letter-spacing: 0.1em;
+}
+
+/* ------------------------------------------------------------ 節 */
+
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.section__head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  border-bottom: 1px solid var(--rule-strong);
+  padding-bottom: 5px;
+}
+
+.section__no {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  color: var(--muted);
+}
+
+.section__title {
+  font-family: var(--serif);
+  font-size: 16px;
+  letter-spacing: 0.08em;
+}
+
+/* ------------------------------------------------------- 相手のカード */
+
+.person {
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  background: var(--sheet);
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 11px;
+}
+
+.person__head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.avatar {
+  width: 34px;
+  height: 34px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  font-size: 14px;
+  font-weight: 600;
+  color: #fff;
+}
+
+.avatar--sm {
+  width: 24px;
+  height: 24px;
+  font-size: 11px;
+}
+
+.person__name {
+  font-family: var(--serif);
+  font-size: 17px;
+}
+
+.person__calls {
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--muted);
+  text-align: right;
+}
+
+.person__calls strong {
+  display: block;
+  font-family: var(--serif);
+  font-size: 15px;
+  color: var(--ink);
+  font-weight: 400;
+}
+
+.meter {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.meter__bar {
+  height: 3px;
+  background: var(--rule);
+}
+
+.meter__fill {
+  height: 100%;
+  background: var(--ink);
+  transition: width 600ms ease-out;
+}
+
+.meter__row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11.5px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.field__key {
+  font-size: 11px;
+  color: var(--muted);
+  letter-spacing: 0.04em;
+}
+
+.field__value {
+  font-family: var(--serif);
+  font-size: 14.5px;
+  line-height: 1.85;
+}
+
+.chiplist {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.chip {
+  border: 1px solid var(--rule-strong);
+  border-radius: 999px;
+  padding: 2px 9px;
+  font-size: 12px;
+  color: var(--ink-dim);
+}
+
+/* 代行が作ったものに付く印。ここだけ茶で通す */
+.mark-proxy {
+  display: inline-block;
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  color: var(--proxy);
+  border: 1px solid var(--proxy);
+  border-radius: 2px;
+  padding: 0 4px;
+  margin-right: 6px;
+  vertical-align: 2px;
+}
+
+.beliefs {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.belief {
+  font-family: var(--serif);
+  font-size: 14.5px;
+  line-height: 1.8;
+  padding-left: 2px;
+}
+
+.belief--fabricated {
+  color: var(--proxy);
+}
+
+.leak {
+  border-left: 3px solid var(--proxy);
+  background: var(--proxy-soft);
+  padding: 9px 12px;
+  font-family: var(--serif);
+  font-size: 14px;
+  line-height: 1.85;
+}
+
+.notes {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.note {
+  display: flex;
+  gap: 8px;
+  font-size: 12.5px;
+  color: var(--ink-dim);
+  line-height: 1.8;
+}
+
+.note__no {
+  color: var(--faint);
+  font-family: var(--mono);
+  font-size: 10.5px;
+  padding-top: 3px;
+}
+
+/* ------------------------------------------------------------ 記録 */
+
+.log {
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  background: var(--sheet);
+  max-height: 260px;
+  overflow-y: auto;
+}
+
+.log__row {
+  display: flex;
+  gap: 12px;
+  padding: 7px 12px;
+  border-bottom: 1px solid var(--rule);
+  font-size: 13px;
+}
+
+.log__row:last-child {
+  border-bottom: none;
+}
+
+.log__day {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--proxy);
+  width: 46px;
+  flex: none;
+  padding-top: 2px;
+  font-variant-numeric: tabular-nums;
+}
+
+.log__text {
+  flex: 1;
+  font-family: var(--serif);
+}
+
+/* ------------------------------------------------------------ 代行中 */
+
+.proxy {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 20px;
+  text-align: center;
+}
+
+.proxy__day {
+  font-family: var(--mono);
+  font-size: 54px;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+}
+
+.proxy__of {
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.proxy__line {
+  font-family: var(--serif);
+  font-size: 15px;
+  min-height: 3em;
+  color: var(--ink-dim);
+}
+
+.sealed {
+  border: 1px dashed var(--rule-strong);
+  border-radius: var(--radius);
+  padding: 28px 18px;
+  font-family: var(--serif);
+  color: var(--muted);
+}
+
+/* ------------------------------------------------------------ 連絡 */
+
+.message {
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  background: var(--sheet);
+  padding: 12px 13px;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+
+.message__head {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+
+.message__name {
+  font-size: 13.5px;
+  font-weight: 600;
+}
+
+.message__day {
+  margin-left: auto;
+  font-family: var(--mono);
+  font-size: 10.5px;
+  color: var(--faint);
+}
+
+.message__body {
+  font-family: var(--serif);
+  font-size: 15px;
+  line-height: 1.85;
+}
+
+.quiz {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  border-top: 1px solid var(--rule);
+  padding-top: 10px;
+}
+
+.quiz__prompt {
+  font-size: 13px;
+  color: var(--ink-dim);
+}
+
+.choice {
+  text-align: left;
+  border: 1px solid var(--rule-strong);
+  border-radius: var(--radius);
+  background: transparent;
+  padding: 9px 11px;
+  font-family: var(--serif);
+  font-size: 14px;
+  line-height: 1.7;
+}
+
+.choice--right {
+  border-color: var(--ink);
+}
+
+.choice--wrong {
+  border-color: var(--warn);
+  color: var(--warn);
+}
+
+.verdict {
+  font-family: var(--serif);
+  font-size: 14.5px;
+}
+
+.verdict--wrong {
+  color: var(--warn);
+}
+
+/* ------------------------------------------------------------ 約束 */
+
+.pledge {
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  background: var(--sheet);
+  padding: 13px;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+
+.pledge--overdue {
+  border-color: var(--warn);
+}
+
+.pledge__due {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+}
+
+.pledge__due--overdue {
+  color: var(--warn);
+}
+
+.pledge__body {
+  font-family: var(--serif);
+  font-size: 15px;
+  line-height: 1.8;
+}
+
+.pledge__state {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  letter-spacing: 0.1em;
+  color: var(--muted);
+}
+
+/* ------------------------------------------------------------ 押す物 */
+
+.btn {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 14px 16px;
+  border: 1px solid var(--ink);
+  border-radius: var(--radius);
+  background: var(--ink);
+  color: var(--paper);
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.btn:active {
+  transform: translateY(1px);
+}
+
+.btn--ghost {
+  background: transparent;
+  color: var(--ink);
+  border-color: var(--rule-strong);
+  font-weight: 500;
+}
+
+.btn--quiet {
+  background: transparent;
+  border-color: transparent;
+  color: var(--muted);
+  font-weight: 500;
+  padding: 11px;
+}
+
+.btn--warn {
+  background: var(--warn);
+  border-color: var(--warn);
+  color: #fff;
+}
+
+.btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.btn__hint {
+  font-family: var(--mono);
+  font-size: 9.5px;
+  letter-spacing: 0.12em;
+  opacity: 0.7;
+}
+
+.actions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* ------------------------------------------------------------ 入力 */
+
+.input,
+.textarea {
+  width: 100%;
+  padding: 11px 12px;
+  background: var(--sheet);
+  border: 1px solid var(--rule-strong);
+  border-radius: var(--radius);
+  outline: none;
+}
+
+.input:focus,
+.textarea:focus {
+  border-color: var(--ink);
+}
+
+.textarea {
+  min-height: 64px;
+  resize: vertical;
+}
+
+.choices {
+  display: flex;
+  gap: 8px;
+}
+
+.opt {
+  flex: 1;
+  border: 1px solid var(--rule-strong);
+  border-radius: var(--radius);
+  background: transparent;
+  padding: 10px 6px;
+  text-align: center;
+  font-size: 13.5px;
+  color: var(--ink-dim);
+}
+
+.opt--on {
+  background: var(--ink);
+  border-color: var(--ink);
+  color: var(--paper);
+}
+
+.toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  border: 1px solid var(--rule-strong);
+  border-radius: var(--radius);
+  background: var(--sheet);
+  padding: 12px 13px;
+  text-align: left;
+}
+
+.toggle__state {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  letter-spacing: 0.1em;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.terms {
+  border-top: 1px solid var(--rule);
+  border-bottom: 1px solid var(--rule);
+  padding: 12px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.empty {
+  padding: 40px 12px;
+  text-align: center;
+  color: var(--muted);
+  font-family: var(--serif);
+  font-size: 14.5px;
+}
+
+/* ------------------------------------------------------------ タブ */
+
+.tabbar {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 5;
+  display: flex;
+  max-width: var(--measure);
+  margin: 0 auto;
+  background: color-mix(in srgb, var(--paper) 94%, transparent);
+  backdrop-filter: blur(8px);
+  border-top: 1px solid var(--rule-strong);
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+.tab {
+  flex: 1;
+  background: none;
+  border: none;
+  padding: 11px 4px 12px;
+  color: var(--faint);
+  font-family: var(--serif);
+  font-size: 13px;
+  letter-spacing: 0.08em;
+}
+
+.tab--on {
+  color: var(--ink);
+}
+
+.tab__badge {
+  display: inline-block;
+  min-width: 16px;
+  margin-left: 4px;
+  border-radius: 999px;
+  background: var(--warn);
+  color: #fff;
+  font-family: var(--mono);
+  font-size: 9.5px;
+  line-height: 16px;
+  vertical-align: 1px;
+}
+
+/* ------------------------------------------------------------ 入口 */
+
+.enter {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 16px;
+  padding: 32px var(--pad) calc(env(safe-area-inset-bottom) + 24px);
+  max-width: 420px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .meter__fill {
+    transition: none;
+  }
+}
