@@ -2,6 +2,7 @@ import { afterRight, afterWrong } from '../lib/after.ts';
 import { closenessLabel, dueLabel } from '../lib/format.ts';
 import { useStore } from '../store.tsx';
 import { Avatar } from './Avatar.tsx';
+import { Ribbon } from './Ribbon.tsx';
 
 /**
  * 引き継いだあと。
@@ -11,7 +12,7 @@ import { Avatar } from './Avatar.tsx';
  * 読み返せば必ず分かる。読み返さないと分からない、というのがこの作品の芯。
  */
 export function Contacts() {
-  const { handover, messages, questions, after, elapsed, answer, closenessOf } = useStore();
+  const { handover, messages, questions, after, elapsed, answer, closenessOf, inheritedOf, horizon } = useStore();
   if (!handover) return null;
 
   const arrived = messages.filter((m) => m.day <= elapsed);
@@ -23,6 +24,8 @@ export function Contacts() {
         <span className="brand__no">引継から {elapsed} 日</span>
       </header>
 
+      <Ribbon proxyDays={handover.days} proxyFilled={handover.days} elapsed={elapsed} horizon={horizon} />
+
       {arrived.length === 0 ? <div className="empty">まだ連絡はありません。</div> : null}
 
       {[...arrived].reverse().map((message) => {
@@ -33,7 +36,7 @@ export function Contacts() {
         return (
           <article className="message" key={message.id}>
             <div className="message__head">
-              <Avatar name={from.name} small />
+              <Avatar name={from.name} small inherited={inheritedOf(from.id)} current={closenessOf(from.id)} />
               <span className="message__name">{from.name}</span>
               <span className="message__day">{message.day} 日目</span>
             </div>
@@ -74,7 +77,7 @@ export function Contacts() {
 
 /** 約束。期限は引き継ぎからの日数で、放っておくと超過する。 */
 export function Pledges() {
-  const { handover, after, elapsed, setPledge } = useStore();
+  const { handover, after, elapsed, setPledge, horizon } = useStore();
   if (!handover) return null;
 
   return (
@@ -83,6 +86,8 @@ export function Pledges() {
         <span className="brand__name">約束</span>
         <span className="brand__no">{handover.pledges.length} 件</span>
       </header>
+
+      <Ribbon proxyDays={handover.days} proxyFilled={handover.days} elapsed={elapsed} horizon={horizon} />
 
       {handover.pledges.map((pledge) => {
         const to = handover.companions.find((c) => c.id === pledge.to);

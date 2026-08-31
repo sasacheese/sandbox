@@ -8,6 +8,7 @@
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { messages as buildMessages, questions as buildQuestions, CLOSENESS_ON_RIGHT, CLOSENESS_ON_WRONG, type Message, type Question } from './lib/after.ts';
+import { effectiveCloseness, inheritedCloseness } from './lib/closeness.ts';
 import * as db from './lib/db.ts';
 import { buildHandover, daysSinceHandover } from './lib/generate.ts';
 import { isoTime, type Handover, type Intake, type Phase, type PromiseStatus } from './lib/types.ts';
@@ -31,7 +32,13 @@ export type AfterState = {
   rate: number;
 };
 
-const EMPTY_AFTER: AfterState = { answers: {}, deltas: {}, pledges: {}, rate: 1440 };
+/**
+ * 既定は 1 日 = 1 時間。
+ *
+ * 1 日 = 1 分にしていたら、触っているあいだに本人の期間が代行期間を追い越して、
+ * 図が「あなたが築いた」ように見えてしまった。既定は作品が正しく見える速さに置く。
+ */
+const EMPTY_AFTER: AfterState = { answers: {}, deltas: {}, pledges: {}, rate: 24 };
 
 export type Store = {
   ready: boolean;
@@ -44,7 +51,11 @@ export type Store = {
   after: AfterState;
   /** 引き継ぎからの経過日数（倍率つき）。 */
   elapsed: number;
+  /** あなたの区間の目安。いちばん遠い約束の期限。図の横幅の割り当てに使う。 */
+  horizon: number;
   closenessOf: (companionId: string) => number;
+  /** 引き継いだ時点の親密度。図の茶色の部分に使う。 */
+  inheritedOf: (companionId: string) => number;
 
   apply: (input: Omit<Intake, 'startedAt'>) => Promise<void>;
   receive: () => Promise<void>;
@@ -214,10 +225,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       messages,
       after,
       elapsed,
+      horizon: Math.max(14, ...(handover?.pledges.map((p) => p.dueDay) ?? [14])),
       closenessOf: (companionId) => {
         const base = handover?.companions.find((c) => c.id === companionId)?.closeness ?? 0;
-        return Math.max(0, Math.min(100, base + (after.deltas[companionId] ?? 0)));
+        return effectiveCloseness(base, after.deltas[companionId] ?? 0, elapsed);
       },
+      inheritedOf: (companionId) =>
+        inheritedCloseness(handover?.companions.find((c) => c.id === companionId)?.closeness ?? 0),
       apply,
       receive,
       enter,

@@ -823,3 +823,284 @@ p {
     transition: none;
   }
 }
+
+/* ------------------------------------------------------- 期間の帯 */
+
+/*
+ * 帯・点表・年表・環——この四つで「関係は他人が数週間から数か月かけて築き、
+ * あなたはその後ろの短い区間を受け取った」を、文章を読まずに見えるようにする。
+ * 色の規則は本文と同じ。**茶が代行、墨があなた、朱が失ったぶん。**
+ */
+
+.ribbon {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.ribbon__track {
+  display: flex;
+  align-items: stretch;
+  height: 30px;
+  border: 1px solid var(--rule-strong);
+  border-radius: var(--radius);
+  overflow: hidden;
+  background: var(--sheet);
+}
+
+.ribbon__proxy {
+  position: relative;
+  flex: 0 0 68%;
+  background: repeating-linear-gradient(
+    135deg,
+    var(--proxy-soft),
+    var(--proxy-soft) 5px,
+    color-mix(in srgb, var(--proxy-soft) 60%, #fff) 5px,
+    color-mix(in srgb, var(--proxy-soft) 60%, #fff) 10px
+  );
+}
+
+.ribbon__proxyFill {
+  height: 100%;
+  background: var(--proxy);
+  opacity: 0.85;
+  transition: width 400ms linear;
+}
+
+.ribbon__seam {
+  flex: none;
+  width: 2px;
+  background: var(--ink);
+}
+
+.ribbon__yours {
+  position: relative;
+  flex: 1;
+  background: var(--sheet);
+}
+
+.ribbon__yoursFill {
+  height: 100%;
+  background: var(--ink);
+  opacity: 0.9;
+  transition: width 400ms linear;
+}
+
+.ribbon__caption {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  padding: 0 8px;
+  font-family: var(--mono);
+  font-size: 9.5px;
+  letter-spacing: 0.1em;
+  color: var(--ink);
+  mix-blend-mode: multiply;
+}
+
+.ribbon__caption--yours {
+  justify-content: flex-end;
+}
+
+.ribbon__marks {
+  display: flex;
+  justify-content: space-between;
+  font-size: 10px;
+  color: var(--muted);
+}
+
+.ribbon__seamLabel {
+  color: var(--ink);
+  font-family: var(--mono);
+  letter-spacing: 0.12em;
+}
+
+/* ------------------------------------------------------- 日の点表 */
+
+.daygrid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.daygrid__row {
+  display: flex;
+  gap: 4px;
+}
+
+.daygrid__dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  border: 1px solid var(--rule-strong);
+  background: transparent;
+}
+
+.daygrid__dot--on {
+  background: var(--proxy);
+  border-color: var(--proxy);
+}
+
+.daygrid__dot--mark {
+  box-shadow: 0 0 0 2px var(--paper), 0 0 0 3px var(--ink);
+}
+
+/* ------------------------------------------------------- 関係の年表 */
+
+.chart {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.chart svg {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
+.chart__grid {
+  stroke: var(--rule);
+  stroke-width: 1;
+}
+
+.chart__proxyArea {
+  fill: var(--proxy-soft);
+  opacity: 0.55;
+}
+
+.chart__proxyLine {
+  fill: none;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  opacity: 0.85;
+}
+
+.chart__seam {
+  stroke: var(--ink);
+  stroke-width: 1.5;
+}
+
+.chart__seamDot {
+  fill: var(--paper);
+  stroke: var(--ink);
+  stroke-width: 1.5;
+}
+
+.chart__yoursLine {
+  stroke: var(--ink);
+  stroke-width: 1.6;
+}
+
+.chart__yoursDot {
+  fill: var(--ink);
+}
+
+.chart__seamText {
+  fill: var(--ink);
+  font-size: 9px;
+  font-family: var(--mono);
+  letter-spacing: 0.12em;
+}
+
+.chart__axisText {
+  fill: var(--muted);
+  font-size: 8.5px;
+  font-family: var(--mono);
+  letter-spacing: 0.08em;
+}
+
+.chart__legend {
+  display: flex;
+  gap: 14px;
+  font-size: 10.5px;
+  color: var(--muted);
+}
+
+.chart__key::before {
+  content: '';
+  display: inline-block;
+  width: 14px;
+  height: 2px;
+  margin-right: 5px;
+  vertical-align: 3px;
+}
+
+.chart__key--proxy::before {
+  background: var(--proxy);
+}
+
+.chart__key--yours::before {
+  background: var(--ink);
+}
+
+/* ------------------------------------------------------- 顔の環 */
+
+.avatar {
+  position: relative;
+  flex: none;
+  display: inline-grid;
+  place-items: center;
+}
+
+.avatar__ring {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.avatar__rest {
+  stroke: var(--rule);
+}
+
+.avatar__proxy {
+  stroke: var(--proxy);
+}
+
+.avatar__gained {
+  stroke: var(--ink);
+}
+
+.avatar__lost {
+  stroke: var(--warn);
+  opacity: 0.55;
+}
+
+.avatar__face {
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  color: #fff;
+  font-weight: 600;
+  width: 68%;
+  height: 68%;
+  font-size: 12px;
+}
+
+.avatar--sm .avatar__face {
+  font-size: 10px;
+}
+
+/* 親密度の棒。代行が築いたぶん・あなたが足したぶん・失ったぶんを塗り分ける */
+.meter__bar {
+  display: flex;
+}
+
+.meter__proxy {
+  height: 100%;
+  background: var(--proxy);
+}
+
+.meter__lost {
+  height: 100%;
+  background: repeating-linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--warn) 35%, transparent),
+    color-mix(in srgb, var(--warn) 35%, transparent) 3px,
+    transparent 3px,
+    transparent 6px
+  );
+}

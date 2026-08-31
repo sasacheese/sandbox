@@ -2,6 +2,9 @@ import { useState } from 'react';
 import { closenessLabel, dateLabel } from '../lib/format.ts';
 import { useStore } from '../store.tsx';
 import { Avatar } from './Avatar.tsx';
+import { Chart } from './Chart.tsx';
+import { DayGrid } from './DayGrid.tsx';
+import { Ribbon } from './Ribbon.tsx';
 
 /**
  * 引継書。この作品の本体。
@@ -15,9 +18,17 @@ import { Avatar } from './Avatar.tsx';
  *    一目で分かる——のに、相手にとってはどちらも同じ「あなた」である。
  */
 export function HandoverView({ onEnter }: { onEnter?: () => void }) {
-  const { handover, intake, closenessOf } = useStore();
+  const { handover, intake, closenessOf, inheritedOf, elapsed, horizon } = useStore();
   const [openLog, setOpenLog] = useState(false);
   if (!handover || !intake) return null;
+
+  const people = handover.companions.map((c) => ({
+    id: c.id,
+    name: c.name,
+    metDay: c.metDay,
+    inherited: inheritedOf(c.id),
+    current: closenessOf(c.id),
+  }));
 
   return (
     <div className={onEnter ? 'screen screen--flow' : 'screen'}>
@@ -26,8 +37,13 @@ export function HandoverView({ onEnter }: { onEnter?: () => void }) {
         <span className="brand__no">{handover.serial}</span>
       </header>
 
+      <Ribbon proxyDays={handover.days} proxyFilled={handover.days} elapsed={elapsed} horizon={horizon} />
+
       <section className="cover">
         <div className="cover__title">関係引継書</div>
+
+        <Chart people={people} proxyDays={handover.days} proxyFilled={handover.days} elapsed={elapsed} horizon={horizon} />
+
         <div className="cover__rows">
           <div className="kv">
             <span className="kv__key">引継先</span>
@@ -39,7 +55,10 @@ export function HandoverView({ onEnter }: { onEnter?: () => void }) {
           </div>
           <div className="kv">
             <span className="kv__key">代行期間</span>
-            <span className="kv__value">{handover.days} 日</span>
+            <span className="kv__value" style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              {handover.days} 日
+              <DayGrid days={handover.days} filled={handover.days} />
+            </span>
           </div>
           <div className="kv">
             <span className="kv__key">引き継ぐ関係</span>
@@ -70,7 +89,7 @@ export function HandoverView({ onEnter }: { onEnter?: () => void }) {
           return (
             <article className="person" key={companion.id}>
               <div className="person__head">
-                <Avatar name={companion.name} />
+                <Avatar name={companion.name} inherited={inheritedOf(companion.id)} current={closeness} />
                 <span className="person__name">{companion.name}</span>
                 <span className="person__calls">
                   あなたの呼び方
@@ -82,12 +101,18 @@ export function HandoverView({ onEnter }: { onEnter?: () => void }) {
 
               <div className="meter">
                 <div className="meter__bar">
-                  <div className="meter__fill" style={{ width: `${closeness}%` }} />
+                  <div className="meter__proxy" style={{ width: `${Math.min(inheritedOf(companion.id), closeness)}%` }} />
+                  {closeness > inheritedOf(companion.id) ? (
+                    <div className="meter__fill" style={{ width: `${closeness - inheritedOf(companion.id)}%` }} />
+                  ) : null}
+                  {closeness < inheritedOf(companion.id) ? (
+                    <div className="meter__lost" style={{ width: `${inheritedOf(companion.id) - closeness}%` }} />
+                  ) : null}
                 </div>
                 <div className="meter__row">
                   <span>{closenessLabel(closeness)}</span>
                   <span>
-                    {closeness} / 100　{companion.metDay} 日目から
+                    代行が {inheritedOf(companion.id)} まで築いた　/　{companion.metDay} 日目から
                   </span>
                 </div>
               </div>

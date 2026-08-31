@@ -100,8 +100,12 @@ export function buildHandover(intake: Intake, now: Date, rand: Rand): Handover {
 /** 代行期間の記録。一日一行。淡々と、業務日誌の書式で。 */
 function buildLog(days: number, companions: readonly Companion[], name: string, rand: Rand): LogEntry[] {
   const out: LogEntry[] = [];
+  let previous = '';
   for (let day = 1; day <= days; day++) {
-    const line = LOG_LINES[Math.floor(rand() * LOG_LINES.length)] ?? '参加のみ。';
+    // 同じ行が二日続くと、生成したものだと一目で分かる。一度だけ引き直す
+    let line = LOG_LINES[Math.floor(rand() * LOG_LINES.length)] ?? '参加のみ。';
+    if (line === previous) line = LOG_LINES[Math.floor(rand() * LOG_LINES.length)] ?? '参加のみ。';
+    previous = line;
     // その日までに関係が始まっている相手だけが出てくる
     const available = companions.filter((c) => c.metDay <= day);
     const who = available[Math.floor(rand() * Math.max(1, available.length))];
