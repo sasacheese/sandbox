@@ -1,8 +1,9 @@
-export type Tab = 'mine' | 'proxy' | 'settings';
+export type Tab = 'mine' | 'proxy' | 'friends' | 'settings';
 
 const TABS: readonly { id: Tab; mark: string; name: string }[] = [
   { id: 'mine', mark: '☰', name: 'トーク' },
   { id: 'proxy', mark: '⧉', name: '代理' },
+  { id: 'friends', mark: '⌾', name: '友達' },
   { id: 'settings', mark: '⚙', name: '設定' },
 ];
 

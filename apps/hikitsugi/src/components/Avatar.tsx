@@ -3,27 +3,37 @@ import { hueOf, initial } from '../lib/format.ts';
 /**
  * 顔。画像は持たせない。
  *
- * 親密度を渡したときだけ環を描く。**茶の弧＝代理人が築いたぶん、墨の弧＝
- * あなたが足したぶん、朱の弧＝失ったぶん。**一覧を眺めただけで、この関係の
- * ほとんどを自分が作っていないことが見える。
+ * 環を描くのは二通り。
+ *
+ * - `inherited` / `current` … 親密度。**茶の弧＝代理人が築いたぶん、墨の弧＝
+ *   あなたが足したぶん、朱の弧＝失ったぶん。**一覧を眺めただけで、この関係の
+ *   ほとんどを自分が作っていないことが見える。
+ * - `progress` … 交流期間の進み具合。友達一覧で使う。**環が閉じたら引き継げる。**
+ *
+ * `mark` を渡すと、顔の右下に小さな印が付く（代理人が仕掛かっている相手の目印）。
  */
 export function Avatar({
   name,
   size = 44,
   inherited,
   current,
+  progress,
+  mark,
 }: {
   name: string;
   size?: number;
   inherited?: number;
   current?: number;
+  progress?: number;
+  mark?: string;
 }) {
-  const ringed = inherited !== undefined;
+  const ringed = inherited !== undefined || progress !== undefined;
   const stroke = size >= 40 ? 3 : 2.5;
   const r = (size - stroke) / 2;
   const c = size / 2;
   const circumference = 2 * Math.PI * r;
 
+  const done = progress !== undefined ? Math.max(0, Math.min(1, progress)) : null;
   const base = Math.max(0, Math.min(100, inherited ?? 0)) / 100;
   const now = Math.max(0, Math.min(100, current ?? inherited ?? 0)) / 100;
   const gained = Math.max(0, now - base);
@@ -49,9 +59,15 @@ export function Avatar({
       {ringed ? (
         <svg className="avatar__ring" viewBox={`0 0 ${size} ${size}`} aria-hidden="true">
           <circle cx={c} cy={c} r={r} fill="none" strokeWidth={stroke} className="avatar__rest" />
-          {arc(Math.min(base, now), 0, 'avatar__proxy')}
-          {gained > 0 ? arc(gained, base, 'avatar__gained') : null}
-          {lost > 0 ? arc(lost, now, 'avatar__lost') : null}
+          {done !== null ? (
+            arc(done, 0, 'avatar__proxy')
+          ) : (
+            <>
+              {arc(Math.min(base, now), 0, 'avatar__proxy')}
+              {gained > 0 ? arc(gained, base, 'avatar__gained') : null}
+              {lost > 0 ? arc(lost, now, 'avatar__lost') : null}
+            </>
+          )}
         </svg>
       ) : null}
       <span
@@ -61,6 +77,11 @@ export function Avatar({
       >
         {initial(name)}
       </span>
+      {mark ? (
+        <span className="avatar__mark" aria-hidden="true">
+          {mark}
+        </span>
+      ) : null}
     </span>
   );
 }

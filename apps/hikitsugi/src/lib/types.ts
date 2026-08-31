@@ -90,15 +90,18 @@ export type Thread = {
   seedId?: string;
   /** proxy のときだけ。交流期間（日）。 */
   days?: number;
-  /**
-   * 交流がどこまで進んでいたか。
-   *
-   * 経過は「作られた時刻からの実時間 ÷ 一日の長さ」＋ headStart で出す。
-   * 一日の長さは設定で変えられるので、開始時刻を実時刻で持つと、倍率を
-   * 変えたときに進行が巻き戻る。**進んだ日数を持つ**ほうが壊れない。
-   */
+  /** 一覧に現れた時刻。ここから一通ずつ等間隔に届く。 */
   createdAt: IsoTime;
+  /**
+   * 現れた時点で進んでいた日数。
+   *
+   * ここまでのやり取りは、現れた時点で出揃っている（**その場にいなかったぶん**）。
+   */
   headStart: number;
+  /** 一通から次の一通までの間（ミリ秒）。トークごとに違う。 */
+  gapMs: number;
+  /** 現れてから満了までに出る投稿の数。出し切ったら引き継げる。 */
+  posts: number;
   /** proxy のときだけ。相手側の人間の判断。 */
   theirs?: TheirDecision;
   serial?: string;
@@ -112,6 +115,22 @@ export type Thread = {
   /** 代理人からの確認への答え。 */
   answers: Record<string, AskAnswer>;
   /** 既読にした時刻。未読の数を出すために持つ。 */
+  readAt?: IsoTime;
+};
+
+/**
+ * 保存するぶん。
+ *
+ * トークそのものは保存しない。**実演の時間割から毎回組み立てる**ので、
+ * 端末に残すのは「本人が触った跡」だけでよい。一巡が終わるとここが空になり、
+ * 同じ関係がもう一度、何も知らない状態から始まる。
+ */
+export type ThreadState = {
+  sent: Sent[];
+  answers: Record<string, AskAnswer>;
+  decision?: Decision;
+  inheritedAt?: IsoTime;
+  delta: number;
   readAt?: IsoTime;
 };
 

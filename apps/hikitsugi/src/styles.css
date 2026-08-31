@@ -1497,6 +1497,8 @@ p {
   color: #fff;
   background: var(--warn);
   border-color: var(--warn);
+  padding: 1px 6px;
+  font-size: 9px;
 }
 
 .row__dormant {
@@ -1507,7 +1509,252 @@ p {
   text-overflow: ellipsis;
 }
 
-.chip-state--ask {
-  padding: 1px 6px;
+/* ============================================================== 友達 */
+
+/*
+ * この画面が、この作品でいちばん短く言える形になる。
+ *
+ *   あなたが築いた 3　／　代理人が築いた 9
+ *
+ * 左の数字は動かない。右の数字だけが、眺めているあいだに増える。
+ */
+.tally {
+  padding: 15px var(--pad) 16px;
+  border-bottom: 1px solid var(--rule);
+}
+
+.tally__bar {
+  display: flex;
+  height: 8px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: var(--field);
+}
+
+.tally__mine {
+  background: var(--ink);
+  transition: flex-grow 900ms linear;
+}
+
+.tally__proxy {
+  background: var(--proxy);
+  transition: flex-grow 900ms linear;
+}
+
+.tally__rows {
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+  margin-top: 11px;
+}
+
+.tally__row {
+  display: flex;
+  align-items: baseline;
+  gap: 9px;
+}
+
+.tally__key {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--ink-dim);
+}
+
+.tally__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.tally__dot--mine {
+  background: var(--ink);
+}
+
+.tally__dot--proxy {
+  background: var(--proxy);
+}
+
+.tally__num {
+  font-family: var(--mono);
+  font-size: 17px;
+  font-variant-numeric: tabular-nums;
+}
+
+.fgroup {
+  display: flex;
+  flex-direction: column;
+}
+
+.fgroup__head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 19px var(--pad) 7px;
+}
+
+.fgroup__title {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  color: var(--muted);
+}
+
+.fgroup__count {
+  margin-left: auto;
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--faint);
+}
+
+.fgroup__note {
+  padding: 0 var(--pad) 9px;
+  font-size: 11.5px;
+  color: var(--faint);
+}
+
+.friend {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 11px var(--pad);
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid var(--rule);
+  text-align: left;
+}
+
+.friend:active {
+  background: var(--sheet);
+}
+
+.friend__body {
+  flex: 1;
+  min-width: 0;
+}
+
+.friend__top {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.friend__name {
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.friend__top .chip-state {
+  margin-left: auto;
+}
+
+.friend__sub {
+  margin-top: 2px;
+  font-size: 11.5px;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 交流期間の進み具合。閉じたら引き継げる */
+.friend__progress {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin-top: 7px;
+}
+
+.friend__bar {
+  flex: 1;
+  height: 3px;
+  border-radius: 999px;
+  background: var(--field);
+  overflow: hidden;
+}
+
+.friend__fill {
+  display: block;
+  height: 100%;
+  background: var(--proxy);
+  transition: width 900ms linear;
+}
+
+.friend__days {
+  font-family: var(--mono);
+  font-size: 9.5px;
+  color: var(--faint);
+  font-variant-numeric: tabular-nums;
+}
+
+.chip-state--proxy {
+  color: var(--proxy);
+  border-color: color-mix(in srgb, var(--proxy) 45%, transparent);
+}
+
+.chip-state--mine {
+  color: var(--ink-dim);
+}
+
+/* 顔の右下に付く「代」。文章を読まずに見分けられるようにするための印 */
+.avatar__mark {
+  position: absolute;
+  right: -3px;
+  bottom: -3px;
+  min-width: 15px;
+  height: 15px;
+  padding: 0 3px;
+  border-radius: 999px;
+  border: 1.5px solid var(--paper);
+  background: var(--proxy);
+  color: #fff;
   font-size: 9px;
+  line-height: 12px;
+  text-align: center;
+}
+
+/* ======================================================= 出たての一通 */
+
+/*
+ * 届いた瞬間だけ動かす。開き直したときに全部が動くと、何が新しいのか
+ * 分からなくなるので、出てから数秒のものにしか印を付けていない。
+ */
+@keyframes arrive {
+  from {
+    opacity: 0;
+    transform: translateY(7px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.bubblerow--fresh,
+.askcard--fresh {
+  animation: arrive 340ms ease-out both;
+}
+
+/* 一覧のほうは、行がひととき色を持つ。どこが動いたかを目で追える */
+@keyframes flash {
+  from {
+    background: var(--proxy-soft);
+  }
+  to {
+    background: transparent;
+  }
+}
+
+.row--fresh {
+  animation: flash 2.4s ease-out both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bubblerow--fresh,
+  .askcard--fresh,
+  .row--fresh {
+    animation: none;
+  }
 }

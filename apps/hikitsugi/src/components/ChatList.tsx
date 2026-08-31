@@ -1,6 +1,6 @@
 import { closenessLabel, listTime } from '../lib/format.ts';
 import { effectiveCloseness } from '../lib/closeness.ts';
-import { bubblesOf, daysSinceInherit, elapsedDays, isReady, pendingAsksOf, previewOf, unreadOf } from '../lib/threads.ts';
+import { bubblesOf, daysSinceInherit, storyDay, isReady, pendingAsksOf, previewOf, unreadOf } from '../lib/threads.ts';
 import type { Thread } from '../lib/types.ts';
 import { useStore } from '../store.tsx';
 import { Avatar } from './Avatar.tsx';
@@ -47,18 +47,20 @@ export function ChatList({ kind, onOpen }: { kind: 'mine' | 'proxy'; onOpen: (th
 }
 
 function Row({ thread, onOpen }: { thread: Thread; onOpen: (threadId: string) => void }) {
-  const { now, settings, handoverFor } = useStore();
-  const bubbles = bubblesOf(thread, now, settings.dayMs);
+  const { now, handoverFor } = useStore();
+  const bubbles = bubblesOf(thread, now);
   const preview = previewOf(bubbles);
   const unread = unreadOf(thread, bubbles);
   const handover = thread.kind === 'proxy' ? handoverFor(thread.id) : null;
   const pending = pendingAsksOf(bubbles);
   const base = handover?.closeness ?? 0;
-  const current = thread.decision === 'inherit' ? effectiveCloseness(base, thread.delta, daysSinceInherit(thread, now, settings.dayMs)) : base;
+  const current = thread.decision === 'inherit' ? effectiveCloseness(base, thread.delta, daysSinceInherit(thread, now)) : base;
   const closed = thread.decision === 'end' || thread.decision === 'agent_only';
+  // 届いた行が一瞬光る。一覧を出したまま置いておくと、どこが動いたか分かる
+  const fresh = preview.at !== null && now.getTime() - new Date(preview.at).getTime() < 2_500;
 
   return (
-    <button type="button" className={`row${closed ? ' row--closed' : ''}`} onClick={() => onOpen(thread.id)}>
+    <button type="button" className={`row${closed ? ' row--closed' : ''}${fresh ? ' row--fresh' : ''}`} onClick={() => onOpen(thread.id)}>
       {thread.kind === 'proxy' ? (
         <Avatar name={thread.title} inherited={base} current={current} />
       ) : (
@@ -85,7 +87,7 @@ function Row({ thread, onOpen }: { thread: Thread; onOpen: (threadId: string) =>
 }
 
 function State({ thread, closeness }: { thread: Thread; closeness: number }) {
-  const { now, settings } = useStore();
+  const { now } = useStore();
   if (thread.kind === 'plain' && !thread.decision) return null;
 
   if (thread.decision === 'inherit') {
@@ -93,10 +95,10 @@ function State({ thread, closeness }: { thread: Thread; closeness: number }) {
   }
   if (thread.decision === 'agent_only') return <span className="chip-state chip-state--closed">代理人が継続中</span>;
   if (thread.decision === 'end') return <span className="chip-state chip-state--closed">破棄</span>;
-  if (isReady(thread, now, settings.dayMs)) return <span className="chip-state chip-state--ready">引き継ぎ可能</span>;
+  if (isReady(thread, now)) return <span className="chip-state chip-state--ready">引き継ぎ可能</span>;
   return (
     <span className="chip-state">
-      交流中 {elapsedDays(thread, now, settings.dayMs)} / {thread.days} 日
+      交流中 {storyDay(thread, now)} / {thread.days} 日
     </span>
   );
 }

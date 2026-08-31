@@ -33,6 +33,20 @@ export function closenessLabel(value: number): string {
   return '離れかけている';
 }
 
+/**
+ * どれくらい途絶えているか。
+ *
+ * 「3 年 2 か月」まで出す。日数で出すと長さが掴めないし、年だけだと丸まりすぎる。
+ */
+export function dormantLabel(ms: number): string {
+  const months = Math.max(0, Math.floor(ms / (30 * 86_400_000)));
+  if (months < 1) return '1 か月未満';
+  if (months < 12) return `${months} か月`;
+  const years = Math.floor(months / 12);
+  const rest = months % 12;
+  return rest === 0 ? `${years} 年` : `${years} 年 ${rest} か月`;
+}
+
 export function initial(name: string): string {
   return [...name.trim()][0] ?? '?';
 }

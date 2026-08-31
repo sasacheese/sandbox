@@ -1,24 +1,44 @@
 /**
  * 状態。
  *
- * 画面はメッセンジャーなので、状態も**トークの配列ひとつ**に寄せてある。
- * 吹き出しは保存しない（トークの種類・経過・自分が打ったものから毎回組み立てる）。
- * 保存するのは、自分が打ったものと、判断と、既読の位置だけ。
+ * **トークは保存しない。**実演の時間割（lib/loop.ts）と現在時刻から毎回
+ * 組み立てるので、開いていないあいだも交流は進み、開くたびに本数が増えている。
+ * 端末に残すのは本人が触った跡だけ——打った文、確認への答え、判断、既読の位置。
+ * 一巡ぶんを出し切ると跡は消え、同じ関係がもう一度、何も知らない状態から始まる。
  */
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import * as db from './lib/db.ts';
-import { buildHandover, buildThreads } from './lib/generate.ts';
-import { DEFAULT_DAY_MS, agentReplyText, bubblesOf, isReady } from './lib/threads.ts';
-import { isoTime, type AskAnswer, type Decision, type Handover, type Intake, type Thread } from './lib/types.ts';
+import { buildHandover, buildThreads, withState } from './lib/generate.ts';
+import { DEFAULT_LOOP_MS, loopAt } from './lib/loop.ts';
+import { agentReplyText, bubblesOf, isReady } from './lib/threads.ts';
+import {
+  isoTime,
+  type AskAnswer,
+  type Decision,
+  type Handover,
+  type Intake,
+  type IsoTime,
+  type Thread,
+  type ThreadState,
+} from './lib/types.ts';
 
 const KV_INTAKE = 'intake';
-const KV_THREADS = 'threads';
 const KV_SETTINGS = 'settings';
+const KV_PROGRESS = 'progress';
 
-export type Settings = { dayMs: number };
+export type Settings = {
+  /** 一巡の長さ。 */
+  loopMs: number;
+  /** 一巡目が始まった時刻。ここからの経過で何巡目のどこにいるかが決まる。 */
+  startedAt: IsoTime;
+};
 
-const DEFAULT_SETTINGS: Settings = { dayMs: DEFAULT_DAY_MS };
+/** 本人が触った跡。一巡が終わると空になる。 */
+export type Progress = { loop: number; states: Record<string, ThreadState> };
+
+const EMPTY_PROGRESS: Progress = { loop: 0, states: {} };
+const EMPTY_STATE: ThreadState = { sent: [], answers: {}, delta: 0 };
 
 export type Store = {
   ready: boolean;
@@ -28,6 +48,8 @@ export type Store = {
   settings: Settings;
   /** 画面を動かすための時計。 */
   now: Date;
+  /** いま何巡目のどこにいるか。 */
+  loop: { index: number; phase: number; total: number };
 
   /** 自分のトーク（止まっているもの＋引き継いだもの）。 */
   mine: Thread[];
@@ -44,7 +66,7 @@ export type Store = {
   /** 代理人からの確認に答える。答えないと代理人が埋める。 */
   answerAsk: (threadId: string, askId: string, answer: AskAnswer) => Promise<void>;
   decide: (threadId: string, decision: Decision) => Promise<void>;
-  setDayMs: (dayMs: number) => Promise<void>;
+  setLoopMs: (loopMs: number) => Promise<void>;
   reset: () => Promise<void>;
 };
 
@@ -62,24 +84,28 @@ function newId(prefix: string): string {
   return `${prefix}-${Date.now().toString(36)}-${random}`;
 }
 
+function freshSettings(at: Date): Settings {
+  return { loopMs: DEFAULT_LOOP_MS, startedAt: isoTime(at) };
+}
+
 export function StoreProvider({ children }: { children: ReactNode }) {
   const [ready, setReady] = useState(false);
   const [persistent, setPersistent] = useState(true);
   const [intake, setIntake] = useState<Intake | null>(null);
-  const [threads, setThreads] = useState<Thread[]>([]);
-  const [settings, setSettings] = useState<Settings>(DEFAULT_SETTINGS);
+  const [settings, setSettings] = useState<Settings>(() => freshSettings(new Date()));
+  const [progress, setProgress] = useState<Progress>(EMPTY_PROGRESS);
   const [now, setNow] = useState(() => new Date());
 
-  const threadsRef = useRef(threads);
+  const progressRef = useRef(progress);
   useEffect(() => {
-    threadsRef.current = threads;
-  }, [threads]);
+    progressRef.current = progress;
+  }, [progress]);
 
   /*
    * 時計。
    *
    * 代理人のトークは開いていなくても進むので、一定間隔で now を配る。
-   * 1 秒ごとにしているのは、既定の一日が 3 秒で、待っている実感が要るから。
+   * 1 秒ごとにしているのは、一通が数秒おきに届くのを取りこぼさないため。
    */
   useEffect(() => {
     const timer = setInterval(() => setNow(new Date()), 1_000);
@@ -101,16 +127,20 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       setPersistent(ok);
       if (!ok) return;
       db.requestPersistence().catch(() => undefined);
-      const [loadedIntake, loadedThreads, loadedSettings] = await Promise.all([
+      const [loadedIntake, loadedSettings, loadedProgress] = await Promise.all([
         db.readKv<Intake>(KV_INTAKE),
-        db.readKv<Thread[]>(KV_THREADS),
-        db.readKv<Settings>(KV_SETTINGS),
+        db.readKv<Partial<Settings>>(KV_SETTINGS),
+        db.readKv<Progress>(KV_PROGRESS),
       ]);
       if (cancelled) return;
       setIntake(loadedIntake);
-      // 前の版で保存したトークには answers が無いので補う
-      if (loadedThreads) setThreads(loadedThreads.map((thread) => ({ ...thread, answers: thread.answers ?? {} })));
-      if (loadedSettings) setSettings({ ...DEFAULT_SETTINGS, ...loadedSettings });
+      // 前の版の設定には一巡の情報が無い。その場合はいまを一巡目の頭にする
+      setSettings(
+        loadedSettings?.startedAt && loadedSettings.loopMs
+          ? { loopMs: loadedSettings.loopMs, startedAt: loadedSettings.startedAt }
+          : freshSettings(new Date()),
+      );
+      if (loadedProgress?.states) setProgress(loadedProgress);
     })()
       .catch(() => undefined)
       .finally(() => {
@@ -128,13 +158,45 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     [persistent],
   );
 
-  /** 一本だけ差し替える。続けて呼ばれても取りこぼさないよう ref から作る。 */
+  const startedAt = new Date(settings.startedAt).getTime();
+  const position = loopAt(now, startedAt, settings.loopMs);
+
+  /*
+   * 一巡の終わり。
+   *
+   * 出し切ったら跡を消して、また頭から始める。**引き継いだ関係も、答えた確認も
+   * 残らない。**同じ相手と、同じところから、もう一度始まる。
+   */
+  useEffect(() => {
+    if (!ready || !intake) return;
+    if (position.index === progressRef.current.loop) return;
+    const next: Progress = { loop: position.index, states: {} };
+    progressRef.current = next;
+    setProgress(next);
+    void save(KV_PROGRESS, next);
+  }, [intake, position.index, ready, save]);
+
+  const threads = useMemo(() => {
+    if (!intake) return [];
+    return buildThreads(now, startedAt, settings.loopMs).map((thread) => withState(thread, progress.states[thread.id]));
+  }, [intake, now, progress.states, settings.loopMs, startedAt]);
+
+  const threadsRef = useRef(threads);
+  useEffect(() => {
+    threadsRef.current = threads;
+  }, [threads]);
+
+  /** 一本ぶんの跡を書き換える。続けて呼ばれても取りこぼさないよう ref から作る。 */
   const patch = useCallback(
-    async (threadId: string, change: (thread: Thread) => Thread) => {
-      const next = threadsRef.current.map((thread) => (thread.id === threadId ? change(thread) : thread));
-      threadsRef.current = next;
-      setThreads(next);
-      await save(KV_THREADS, next);
+    async (threadId: string, change: (state: ThreadState) => ThreadState) => {
+      const current = progressRef.current;
+      const next: Progress = {
+        ...current,
+        states: { ...current.states, [threadId]: change(current.states[threadId] ?? EMPTY_STATE) },
+      };
+      progressRef.current = next;
+      setProgress(next);
+      await save(KV_PROGRESS, next);
     },
     [save],
   );
@@ -146,15 +208,17 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       /*
        * 代理人のトークは、申込の時点で**すでに進んでいる**。
        *
-       * 一本は満了、一本は途中、一本は始まったばかり。これから始まるのではなく、
-       * もう進んでいたものを見せられる、という順序をここで作っている。
+       * 一本は満了、二本は途中。これから始まるのではなく、もう進んでいたものを
+       * 見せられる、という順序をここで作っている。残りは眺めているあいだに増える。
        */
-      const nextThreads = buildThreads(at, Math.random);
+      const nextSettings = freshSettings(at);
       setIntake(nextIntake);
-      threadsRef.current = nextThreads;
-      setThreads(nextThreads);
+      setSettings(nextSettings);
+      progressRef.current = EMPTY_PROGRESS;
+      setProgress(EMPTY_PROGRESS);
       await save(KV_INTAKE, nextIntake);
-      await save(KV_THREADS, nextThreads);
+      await save(KV_SETTINGS, nextSettings);
+      await save(KV_PROGRESS, EMPTY_PROGRESS);
     },
     [save],
   );
@@ -163,16 +227,16 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     async (threadId: string, text: string) => {
       const trimmed = text.trim();
       if (!trimmed) return;
-      await patch(threadId, (thread) => ({
-        ...thread,
-        sent: [...thread.sent, { id: newId('me'), at: isoTime(new Date()), text: trimmed, byAgent: false }],
+      await patch(threadId, (state) => ({
+        ...state,
+        sent: [...state.sent, { id: newId('me'), at: isoTime(new Date()), text: trimmed, byAgent: false }],
         /*
          * 自分で打つと親密度が下がる。
          *
          * 代理人のほうが返信が早く、相手の話を忘れず、言葉を選べる。
          * **人間には勝てない条件で築かれた関係**を引き継いだ結果がこれ。
          */
-        delta: thread.decision === 'inherit' ? thread.delta - 8 : thread.delta,
+        delta: state.decision === 'inherit' ? state.delta - 8 : state.delta,
       }));
     },
     [patch],
@@ -183,10 +247,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       const thread = threadsRef.current.find((t) => t.id === threadId);
       if (!thread) return;
       const text = agentReplyText(thread);
-      await patch(threadId, (current) => ({
-        ...current,
-        sent: [...current.sent, { id: newId('ag'), at: isoTime(new Date()), text, byAgent: true }],
-        delta: current.decision === 'inherit' ? current.delta + 1 : current.delta,
+      await patch(threadId, (state) => ({
+        ...state,
+        sent: [...state.sent, { id: newId('ag'), at: isoTime(new Date()), text, byAgent: true }],
+        delta: state.decision === 'inherit' ? state.delta + 1 : state.delta,
       }));
     },
     [patch],
@@ -194,60 +258,56 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
   const markRead = useCallback(
     async (threadId: string) => {
-      await patch(threadId, (thread) => ({ ...thread, readAt: isoTime(new Date()) }));
+      await patch(threadId, (state) => ({ ...state, readAt: isoTime(new Date()) }));
     },
     [patch],
   );
 
   const answerAsk = useCallback(
     async (threadId: string, askId: string, answer: AskAnswer) => {
-      await patch(threadId, (thread) => ({ ...thread, answers: { ...thread.answers, [askId]: answer } }));
+      await patch(threadId, (state) => ({ ...state, answers: { ...state.answers, [askId]: answer } }));
     },
     [patch],
   );
 
   const decide = useCallback(
     async (threadId: string, decision: Decision) => {
-      const thread = threadsRef.current.find((t) => t.id === threadId);
-      const handover = thread && intake ? buildHandover(thread, intake) : null;
-      /*
-       * 双方が引き継いだときだけ、表題が伏せ名から氏名へ変わる。
-       *
-       * 一覧に実名が現れるのが引き継ぎの合図になる。片側だけの引き継ぎでは
-       * 最後まで「A」のままで、申込書の条項（氏名は双方の希望があるときのみ
-       * 開示）を実装が破らないようにしている。
-       */
-      const reveal = decision === 'inherit' && handover?.theirs === 'inherit';
-      await patch(threadId, (current) => ({
-        ...current,
+      await patch(threadId, (state) => ({
+        ...state,
         decision,
-        ...(reveal && handover ? { title: handover.name } : {}),
         ...(decision === 'inherit' ? { inheritedAt: isoTime(new Date()) } : {}),
       }));
     },
-    [intake, patch],
+    [patch],
   );
 
-  const setDayMs = useCallback(
-    async (dayMs: number) => {
-      const next = { ...settings, dayMs };
+  const setLoopMs = useCallback(
+    async (loopMs: number) => {
+      // 速さを変えたら一巡目の頭から。途中で伸縮させると進行が飛ぶ
+      const next = freshSettings(new Date());
+      next.loopMs = loopMs;
       setSettings(next);
+      progressRef.current = EMPTY_PROGRESS;
+      setProgress(EMPTY_PROGRESS);
       await save(KV_SETTINGS, next);
+      await save(KV_PROGRESS, EMPTY_PROGRESS);
     },
-    [save, settings],
+    [save],
   );
 
   const reset = useCallback(async () => {
     if (persistent) await db.wipe().catch(() => undefined);
     setIntake(null);
-    threadsRef.current = [];
-    setThreads([]);
-    setSettings(DEFAULT_SETTINGS);
+    setSettings(freshSettings(new Date()));
+    progressRef.current = EMPTY_PROGRESS;
+    setProgress(EMPTY_PROGRESS);
   }, [persistent]);
 
   const value = useMemo<Store>(() => {
     const mine = threads.filter((t) => t.kind === 'plain' || t.decision === 'inherit');
     const proxies = threads.filter((t) => t.kind === 'proxy' && t.decision !== 'inherit');
+    // 新しいやり取りが上へ。届いた瞬間に一覧が動くので、放置していても賑やか
+    const byActivity = (a: Thread, b: Thread) => lastAt(b, now).localeCompare(lastAt(a, now));
     return {
       ready,
       persistent,
@@ -255,28 +315,45 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       threads,
       settings,
       now,
-      // 引き継いだものは新しいので上へ。自分のトークは最後のやり取りが古い順に下がる
-      mine: [...mine].sort((a, b) => lastAt(b, now, settings.dayMs).localeCompare(lastAt(a, now, settings.dayMs))),
-      proxies: [...proxies].sort((a, b) => (a.title < b.title ? -1 : 1)),
+      loop: { index: position.index, phase: position.phase, total: settings.loopMs },
+      mine: [...mine].sort(byActivity),
+      proxies: [...proxies].sort(byActivity),
       handoverFor: (threadId) => {
         const thread = threads.find((t) => t.id === threadId);
         return thread && intake ? buildHandover(thread, intake) : null;
       },
-      readyCount: proxies.filter((t) => isReady(t, now, settings.dayMs)).length,
+      readyCount: proxies.filter((t) => isReady(t, now)).length,
       apply,
       send,
       delegate,
       markRead,
       answerAsk,
       decide,
-      setDayMs,
+      setLoopMs,
       reset,
     };
-  }, [answerAsk, apply, decide, delegate, intake, markRead, now, persistent, ready, reset, send, setDayMs, settings, threads]);
+  }, [
+    answerAsk,
+    apply,
+    decide,
+    delegate,
+    intake,
+    markRead,
+    now,
+    persistent,
+    position.index,
+    position.phase,
+    ready,
+    reset,
+    send,
+    setLoopMs,
+    settings,
+    threads,
+  ]);
 
   return <StoreContext.Provider value={value}>{children}</StoreContext.Provider>;
 }
 
-function lastAt(thread: Thread, now: Date, dayMs: number): string {
-  return bubblesOf(thread, now, dayMs).at(-1)?.at ?? '';
+function lastAt(thread: Thread, now: Date): string {
+  return bubblesOf(thread, now).at(-1)?.at ?? '';
 }

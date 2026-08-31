@@ -1,9 +1,9 @@
-import { DAY_PRESETS } from '../lib/threads.ts';
+import { LOOP_PRESETS } from '../lib/loop.ts';
 import { useStore } from '../store.tsx';
 
 /** 設定。作品の外側の都合だけ置く。作り込まない。 */
 export function Settings() {
-  const { settings, setDayMs, reset, persistent, intake, threads } = useStore();
+  const { settings, setLoopMs, reset, persistent, intake, threads, loop } = useStore();
   const inherited = threads.filter((t) => t.decision === 'inherit').length;
   const agentSent = threads.reduce((n, t) => n + t.sent.filter((s) => s.byAgent).length, 0);
   const selfSent = threads.reduce((n, t) => n + t.sent.filter((s) => !s.byAgent).length, 0);
@@ -18,21 +18,24 @@ export function Settings() {
         <section className="section">
           <div className="section__head">
             <span className="section__no">01</span>
-            <span className="section__title">時間の進み方</span>
+            <span className="section__title">一巡の長さ</span>
           </div>
           <div className="choices">
-            {DAY_PRESETS.map((preset) => (
+            {LOOP_PRESETS.map((preset) => (
               <button
                 key={preset.ms}
                 type="button"
-                className={`opt${settings.dayMs === preset.ms ? ' opt--on' : ''}`}
-                onClick={() => void setDayMs(preset.ms)}
+                className={`opt${settings.loopMs === preset.ms ? ' opt--on' : ''}`}
+                onClick={() => void setLoopMs(preset.ms)}
               >
                 {preset.label}
               </button>
             ))}
           </div>
-          <span className="sub">代理人の交流と、引き継いだあとの日数に効きます。日常で使うなら実時間。</span>
+          <span className="sub">
+            代理人のトークは九本ぶん用意してあり、順に現れて順に満了します。出し切ると最初へ戻り、引き継いだ関係も答えた確認も残りません。
+            短くするほど一通あたりの間隔が詰まります。変えると一巡目の頭から始まります。
+          </span>
         </section>
 
         <section className="section">
@@ -41,6 +44,12 @@ export function Settings() {
             <span className="section__title">記録</span>
           </div>
           <div className="cover__rows">
+            <div className="kv">
+              <span className="kv__key">いまの位置</span>
+              <span className="kv__value num">
+                {loop.index + 1} 巡目 · {Math.floor(loop.phase / 60_000)} / {Math.round(loop.total / 60_000)} 分
+              </span>
+            </div>
             <div className="kv">
               <span className="kv__key">お名前</span>
               <span className="kv__value">{intake?.name ?? '—'}</span>

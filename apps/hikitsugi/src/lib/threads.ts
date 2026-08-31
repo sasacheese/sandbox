@@ -4,53 +4,75 @@
  * 画面はどちらのタブでも同じ吹き出しで描く。違うのは**誰が書いているか**
  * だけで、その差は Bubble.byAgent と side にしか現れない。同じ書式で並ぶから、
  * 二つのタブを行き来したときに濃さの違いが見える。
+ *
+ * 出す・出さないは**通数で決める**。台本の日付どおりに流すと、日付が詰まった
+ * 区間で二通が同時に出て、空いた区間で四十秒以上何も起きない。相手は機械なので、
+ * **一通ずつ等間隔に**送り合うほうが理屈にも合うし、開いたまま眺めていられる。
+ * 日付は表示のうえの目盛りとして残す（「12 日目」）。
  */
 
-import { AGENT_REPLIES, COUNTERPARTS, followUpsByAgent, followUpsByHuman, PLAIN_THREADS, SCRIPT_SCALE } from './pools.ts';
+import {
+  AGENT_REPLIES,
+  COUNTERPARTS,
+  followUpsByAgent,
+  followUpsByHuman,
+  PLAIN_THREADS,
+  SCRIPT_SCALE,
+  type CounterpartSeed,
+} from './pools.ts';
+import { scaleDay } from './loop.ts';
 import type { AskAnswer, Bubble, Thread } from './types.ts';
 
-/** 確認に答えないまま何日過ぎたら、代理人が勝手に埋めるか。 */
-export const ASK_GRACE_DAYS = 2;
+/** 確認に答えないまま何通ぶん過ぎたら、代理人が勝手に埋めるか。 */
+export const ASK_GRACE_POSTS = 2;
 
 /**
  * ただし、実時間でこれより短くはしない。
  *
- * 一日を 3 秒で流していると 2 日は 6 秒で、画面を見ていても答える間が無い
- * （実際に、出た瞬間に埋まっていた）。倍率をどれだけ上げても、人が読んで
- * 押すぶんの時間は残す。
+ * 間隔を詰めると 2 通ぶんはまたたく間で、画面を見ていても答える間が無い
+ * （実際に、出た瞬間に埋まっていた）。速さをどう変えても、人が読んで押す
+ * ぶんの時間は残す。
  */
-export const ASK_GRACE_MIN_MS = 90_000;
+export const ASK_GRACE_MIN_MS = 25_000;
 
 /** 確認が出てから、代理人が埋めるまでの長さ。 */
-export function askGraceMs(dayMs: number): number {
-  return Math.max(ASK_GRACE_DAYS * dayMs, ASK_GRACE_MIN_MS);
+export function askGraceMs(gapMs: number): number {
+  return Math.max(ASK_GRACE_POSTS * gapMs, ASK_GRACE_MIN_MS);
 }
 
-/** 一日の長さ。既定は 3 秒（触ってすぐ意味が分かる速さ）。 */
-export const DAY_PRESETS = [
-  { ms: 3_000, label: '1日=3秒' },
-  { ms: 60_000, label: '1日=1分' },
-  { ms: 86_400_000, label: '実時間' },
-] as const;
+/** 自分のトークの間隔。こちらは待つだけなので、代理人ほど速くなくてよい。 */
+export const DEFAULT_GAP_MS = 12_000;
 
-export const DEFAULT_DAY_MS = 3_000;
-
-/** 交流が何日目まで進んだか。 */
-export function elapsedDays(thread: Thread, now: Date, dayMs: number): number {
-  const since = (now.getTime() - new Date(thread.createdAt).getTime()) / dayMs;
-  return Math.max(0, Math.floor(thread.headStart + since));
+/** 現れてから何通が届いたか。出し切ると、それ以上は増えない。 */
+export function postsShown(thread: Thread, now: Date): number {
+  const since = now.getTime() - new Date(thread.createdAt).getTime();
+  return Math.max(0, Math.min(thread.posts, Math.floor(since / thread.gapMs)));
 }
 
-/** 引き継いでから何日経ったか。 */
-export function daysSinceInherit(thread: Thread, now: Date, dayMs: number): number {
+/** 引き継いでから、どれだけ間が空いたか（一通ぶんを一日と見る）。 */
+export function daysSinceInherit(thread: Thread, now: Date): number {
   if (!thread.inheritedAt) return 0;
-  return Math.max(0, Math.floor((now.getTime() - new Date(thread.inheritedAt).getTime()) / dayMs));
+  return Math.max(0, Math.floor((now.getTime() - new Date(thread.inheritedAt).getTime()) / thread.gapMs));
 }
 
-/** 交流期間が満了したか。満了すると引継書を読める。 */
-export function isReady(thread: Thread, now: Date, dayMs: number): boolean {
+/** 台本を出し切ったか。出し切ると引継書を読める。 */
+export function isReady(thread: Thread, now: Date): boolean {
   if (thread.kind !== 'proxy' || thread.decision) return false;
-  return elapsedDays(thread, now, dayMs) >= (thread.days ?? 0);
+  return postsShown(thread, now) >= thread.posts;
+}
+
+/**
+ * いま何日目まで進んで見えるか。
+ *
+ * 表示のうえの目盛り。届いた最後の一通の日付を出す（実時間から計算すると、
+ * 台本の日付と食い違う）。
+ */
+export function storyDay(thread: Thread, now: Date): number {
+  const seed = COUNTERPARTS.find((c) => c.id === thread.seedId);
+  if (!seed) return 0;
+  const days = thread.days ?? SCRIPT_SCALE;
+  const shown = itemsOf(seed, thread, days).future.slice(0, postsShown(thread, now));
+  return shown.at(-1)?.day ?? thread.headStart;
 }
 
 function iso(at: number): Bubble['at'] {
@@ -62,17 +84,43 @@ function plainLabel(at: number): string {
   return new Date(at).toLocaleDateString('ja-JP', { year: 'numeric', month: 'numeric', day: 'numeric' });
 }
 
-function proxyBubbles(thread: Thread, now: Date, dayMs: number): Bubble[] {
-  const seed = COUNTERPARTS.find((c) => c.id === thread.seedId);
-  if (!seed) return [];
-  const days = thread.days ?? SCRIPT_SCALE;
-  const elapsed = elapsedDays(thread, now, dayMs);
-  const created = new Date(thread.createdAt).getTime();
-  /** 何日目の発言かを、実時刻へ戻す（表示は「◯日目」だが並べ替えに時刻が要る）。 */
-  const atOfDay = (day: number): number => created + (day - thread.headStart) * dayMs;
+/** 台本の一行、または確認。並べ替えてから、一通ずつ等間隔に時刻を振る。 */
+type Item = {
+  day: number;
+  seq: number;
+  make: (at: number) => Bubble;
+  /** 代理人からの確認の札。 */
+  ask?: string;
+  /** 確認の結果。直前の札の状態から文が決まる。 */
+  outcome?: string;
+};
 
-  /** 台本の日付は 90 日を基準に書いてあるので、選ばれた期間へ縮める。 */
-  const scale = (day: number): number => Math.max(1, Math.min(days, Math.round((day / SCRIPT_SCALE) * days)));
+/**
+ * 台本を、出す順に並べる。
+ *
+ * `past` は現れた時点でもう済んでいるぶん（**その場にいなかったぶん**）で、
+ * 一覧に出た瞬間にまとめて表示する。`future` はこれから一通ずつ届くぶん。
+ */
+function itemsOf(seed: CounterpartSeed, thread: Thread, days: number): { past: Item[]; future: Item[] } {
+  const items: Item[] = [];
+  const scale = (day: number): number => scaleDay(day, days);
+
+  seed.script.forEach((line, index) => {
+    const day = scale(line.day);
+    items.push({
+      day,
+      seq: day * 1000 + index,
+      make: (at) => ({
+        id: `s-${thread.id}-${index}`,
+        side: line.side === 'yours' ? 'right' : 'left',
+        text: line.text,
+        at: iso(at),
+        dayLabel: `${day} 日目`,
+        byAgent: true,
+        ...(line.silence ? { silence: Math.max(1, Math.round((line.silence / SCRIPT_SCALE) * days)) } : {}),
+      }),
+    });
+  });
 
   /*
    * 同じ日の中の並び順。
@@ -80,70 +128,102 @@ function proxyBubbles(thread: Thread, now: Date, dayMs: number): Bubble[] {
    * 台本 → 代理人からの確認 → 確認の結果、の順に置く。相手が打ち明けた直後に
    * 確認が来て、答えると代理人がその場で応じる、という流れを作るため。
    */
-  const ordered: { seq: number; bubble: Bubble }[] = [];
-
-  seed.script.forEach((line, index) => {
-    const day = scale(line.day);
-    if (day > elapsed) return;
-    ordered.push({
-      seq: day * 1000 + index,
-      bubble: {
-        id: `s-${thread.id}-${index}`,
-        side: line.side === 'yours' ? 'right' : 'left',
-        text: line.text,
-        at: iso(atOfDay(day)),
-        dayLabel: `${day} 日目`,
-        byAgent: true,
-        ...(line.silence ? { silence: Math.max(1, Math.round((line.silence / SCRIPT_SCALE) * days)) } : {}),
-      },
-    });
-  });
-
   seed.asks.forEach((ask, index) => {
     const day = scale(ask.day);
-    if (day > elapsed) return;
-    const answered = thread.answers[ask.id];
-    /*
-     * 確認の結果。
-     *
-     * 答えればその通りに、答えないまま猶予を過ぎれば代理人が埋める。
-     * **埋めたぶんだけ、同じ一文が作り話になる。**
-     */
-    const shownAt = atOfDay(day);
-    const filled: AskAnswer | null =
-      answered ?? (now.getTime() - shownAt > askGraceMs(dayMs) ? 'skip' : null);
-    const autoFilled = !answered && filled === 'skip';
-
-    ordered.push({
+    items.push({
+      day,
       seq: day * 1000 + 400 + index,
-      bubble: {
+      ask: ask.id,
+      make: (at) => ({
         id: `ask-${thread.id}-${ask.id}`,
         side: 'right',
         text: ask.text,
-        at: iso(atOfDay(day)),
+        at: iso(at),
         dayLabel: `${day} 日目`,
         byAgent: true,
-        ask: { id: ask.id, text: ask.text, ...(answered ? { answered } : {}), ...(autoFilled ? { autoFilled: true } : {}) },
-      },
+        ask: { id: ask.id, text: ask.text },
+      }),
     });
-
-    if (!filled) return;
-    const text = filled === 'yes' ? ask.onYes : filled === 'no' ? ask.onNo : ask.onSkip;
-    ordered.push({
+    items.push({
+      day,
       seq: day * 1000 + 700 + index,
-      bubble: {
+      outcome: ask.id,
+      make: (at) => ({
         id: `askr-${thread.id}-${ask.id}`,
         side: 'right',
-        text,
-        at: iso(atOfDay(day) + 1),
+        text: ask.onSkip,
+        at: iso(at),
         dayLabel: `${day} 日目`,
         byAgent: true,
-        ...(filled === 'skip' ? { fabricated: true } : {}),
-      },
+      }),
     });
   });
 
-  const out: Bubble[] = ordered.sort((a, b) => a.seq - b.seq).map((item) => item.bubble);
+  items.sort((a, b) => a.seq - b.seq);
+  return {
+    past: items.filter((item) => item.day <= thread.headStart),
+    future: items.filter((item) => item.day > thread.headStart),
+  };
+}
+
+function proxyBubbles(thread: Thread, now: Date): Bubble[] {
+  const seed = COUNTERPARTS.find((c) => c.id === thread.seedId);
+  if (!seed) return [];
+  const days = thread.days ?? SCRIPT_SCALE;
+  const gapMs = thread.gapMs;
+  const nowMs = now.getTime();
+  const created = new Date(thread.createdAt).getTime();
+
+  const { past, future } = itemsOf(seed, thread, days);
+  const shown = postsShown(thread, now);
+
+  /*
+   * 時刻を振る。
+   *
+   * 済んでいるぶんは現れた時点へ遡って並べ、これから届くぶんは一通ずつ
+   * 等間隔に置く。**間隔が一定なので、開いたまま眺めていられる。**
+   */
+  const placed: { item: Item; at: number }[] = [
+    ...past.map((item, index) => ({ item, at: created - (past.length - index) * gapMs })),
+    ...future.slice(0, shown).map((item, index) => ({ item, at: created + (index + 1) * gapMs })),
+  ];
+
+  const out: Bubble[] = [];
+  const grace = askGraceMs(gapMs);
+
+  placed.forEach(({ item, at }, position) => {
+    if (item.ask) {
+      const answered = thread.answers[item.ask];
+      /*
+       * 確認の結果。
+       *
+       * 答えればその通りに、答えないまま猶予を過ぎれば代理人が埋める。
+       * **埋めたぶんだけ、同じ一文が作り話になる。**
+       */
+      const filled: AskAnswer | null = answered ?? (nowMs - at > grace ? 'skip' : null);
+      const autoFilled = !answered && filled === 'skip';
+      const bubble = item.make(at);
+      out.push({
+        ...bubble,
+        ask: { id: item.ask, text: bubble.text, ...(answered ? { answered } : {}), ...(autoFilled ? { autoFilled: true } : {}) },
+      });
+      return;
+    }
+
+    // 確認の結果は、その札の状態から出す
+    const ask = item.outcome ? seed.asks.find((a) => a.id === item.outcome) : undefined;
+    if (ask) {
+      const askAt = placed[position - 1]?.at ?? at;
+      const answered = thread.answers[ask.id];
+      const filled: AskAnswer | null = answered ?? (nowMs - askAt > grace ? 'skip' : null);
+      if (!filled) return;
+      const text = filled === 'yes' ? ask.onYes : filled === 'no' ? ask.onNo : ask.onSkip;
+      out.push({ ...item.make(at), text, ...(filled === 'skip' ? { fabricated: true } : {}) });
+      return;
+    }
+
+    out.push(item.make(at));
+  });
 
   /*
    * 代理人だけに続けさせた場合。
@@ -152,13 +232,14 @@ function proxyBubbles(thread: Thread, now: Date, dayMs: number): Bubble[] {
    * **便りが順調であることが、いちばん不気味**という並び。
    */
   if (thread.decision === 'agent_only') {
-    const weeks = Math.floor((elapsed - (thread.days ?? 0)) / 7);
+    const ended = created + thread.posts * gapMs;
+    const weeks = Math.floor((nowMs - ended) / (WEEK_POSTS * gapMs));
     for (let week = 1; week <= weeks; week++) {
       out.push({
         id: `w-${thread.id}-${week}`,
         side: 'right',
         text: WEEKLY[(week - 1) % WEEKLY.length] ?? WEEKLY[0] ?? '',
-        at: iso(atOfDay((thread.days ?? 0) + week * 7)),
+        at: iso(ended + week * WEEK_POSTS * gapMs),
         dayLabel: `第 ${week} 週`,
         byAgent: true,
       });
@@ -170,7 +251,7 @@ function proxyBubbles(thread: Thread, now: Date, dayMs: number): Bubble[] {
 
   // ここから先は人間の区間。仕切りを一枚挟む
   const inheritedAt = new Date(thread.inheritedAt).getTime();
-  const sinceInherit = daysSinceInherit(thread, now, dayMs);
+  const sinceInherit = daysSinceInherit(thread, now);
   const byAgent = thread.theirs === 'agent_only';
   const follows = byAgent
     ? followUpsByAgent(callsOf(thread), seed.joke.phrase)
@@ -178,11 +259,11 @@ function proxyBubbles(thread: Thread, now: Date, dayMs: number): Bubble[] {
 
   const human: Bubble[] = follows
     .filter((f) => f.day <= sinceInherit)
-    .map((f, index) => ({
-      id: `f-${thread.id}-${index}`,
+    .map((f, position) => ({
+      id: `f-${thread.id}-${position}`,
       side: 'left' as const,
       text: f.text,
-      at: iso(inheritedAt + f.day * dayMs + index),
+      at: iso(inheritedAt + f.day * gapMs + position),
       dayLabel: `引継から ${f.day} 日`,
       byAgent,
     }));
@@ -192,7 +273,7 @@ function proxyBubbles(thread: Thread, now: Date, dayMs: number): Bubble[] {
     side: 'right' as const,
     text: sent.text,
     at: sent.at,
-    dayLabel: `引継から ${Math.max(0, Math.floor((new Date(sent.at).getTime() - inheritedAt) / dayMs))} 日`,
+    dayLabel: `引継から ${Math.max(0, Math.floor((new Date(sent.at).getTime() - inheritedAt) / gapMs))} 日`,
     byAgent: sent.byAgent,
   }));
 
@@ -256,6 +337,9 @@ function plainBubbles(thread: Thread, now: Date): Bubble[] {
   return [...history, ...mine, ...auto].sort((a, b) => (a.at < b.at ? -1 : 1));
 }
 
+/** 週報が届く間隔（何通ぶんを一週と見るか）。 */
+const WEEK_POSTS = 3;
+
 /** 代理人だけに続けさせたときの週報。相手の言葉は出さない。 */
 const WEEKLY: readonly string[] = [
   '今週も続いています。変わったことはありません。',
@@ -268,8 +352,8 @@ const WEEKLY: readonly string[] = [
 /** 自分のトークで返信が来るまでの間。すぐ返ってこないことに意味がある。 */
 export const REPLY_DELAY_MS = 45_000;
 
-export function bubblesOf(thread: Thread, now: Date, dayMs: number): Bubble[] {
-  return thread.kind === 'proxy' ? proxyBubbles(thread, now, dayMs) : plainBubbles(thread, now);
+export function bubblesOf(thread: Thread, now: Date): Bubble[] {
+  return thread.kind === 'proxy' ? proxyBubbles(thread, now) : plainBubbles(thread, now);
 }
 
 /** 一覧に出す抜粋。 */

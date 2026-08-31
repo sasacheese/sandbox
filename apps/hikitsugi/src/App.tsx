@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Chat } from './components/Chat.tsx';
 import { ChatList } from './components/ChatList.tsx';
+import { Friends } from './components/Friends.tsx';
 import { Gate } from './components/Gate.tsx';
 import { HandoverSheet } from './components/HandoverSheet.tsx';
 import { Intake } from './components/Intake.tsx';
@@ -49,7 +50,7 @@ export function App() {
   // 未読の合計。タブの右上に出す
   const unread = (kind: 'mine' | 'proxy'): number =>
     (kind === 'mine' ? store.mine : store.proxies).reduce((sum, thread) => {
-      const bubbles = bubblesOf(thread, store.now, store.settings.dayMs);
+      const bubbles = bubblesOf(thread, store.now);
       // 未回答の確認も数に入れる。放っておくと代理人が埋めてしまうため
       return sum + unreadOf(thread, bubbles) + pendingAsksOf(bubbles);
     }, 0);
@@ -58,6 +59,7 @@ export function App() {
     <div className="app">
       {tab === 'mine' ? <ChatList kind="mine" onOpen={setOpenId} /> : null}
       {tab === 'proxy' ? <ChatList kind="proxy" onOpen={setOpenId} /> : null}
+      {tab === 'friends' ? <Friends onOpen={setOpenId} /> : null}
       {tab === 'settings' ? <Settings /> : null}
       <TabBar current={tab} onChange={setTab} badges={{ mine: unread('mine'), proxy: unread('proxy') }} />
     </div>

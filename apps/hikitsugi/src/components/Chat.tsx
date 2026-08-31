@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { effectiveCloseness } from '../lib/closeness.ts';
 import { clockTime, closenessLabel } from '../lib/format.ts';
-import { bubblesOf, daysSinceInherit, elapsedDays, isReady } from '../lib/threads.ts';
+import { bubblesOf, daysSinceInherit, storyDay, isReady } from '../lib/threads.ts';
 import type { AskAnswer, Bubble, Thread } from '../lib/types.ts';
 import { useStore } from '../store.tsx';
 import { Avatar } from './Avatar.tsx';
@@ -19,16 +19,16 @@ import { Avatar } from './Avatar.tsx';
  *   引き継いだトーク　：打てる。隣に「代理人に任せる」が付く
  */
 export function Chat({ thread, onBack, onOpenHandover }: { thread: Thread; onBack: () => void; onOpenHandover: () => void }) {
-  const { now, settings, send, delegate, markRead, answerAsk, handoverFor } = useStore();
+  const { now, send, delegate, markRead, answerAsk, handoverFor } = useStore();
   const [draft, setDraft] = useState('');
   const bottom = useRef<HTMLDivElement>(null);
 
-  const bubbles = bubblesOf(thread, now, settings.dayMs);
+  const bubbles = bubblesOf(thread, now);
   const handover = thread.kind === 'proxy' ? handoverFor(thread.id) : null;
   const inherited = thread.decision === 'inherit';
-  const ready = isReady(thread, now, settings.dayMs);
+  const ready = isReady(thread, now);
   const base = handover?.closeness ?? 0;
-  const closeness = inherited ? effectiveCloseness(base, thread.delta, daysSinceInherit(thread, now, settings.dayMs)) : base;
+  const closeness = inherited ? effectiveCloseness(base, thread.delta, daysSinceInherit(thread, now)) : base;
 
   // 開いたら既読にする。未読の数はここで消える
   useEffect(() => {
@@ -38,6 +38,14 @@ export function Chat({ thread, onBack, onOpenHandover }: { thread: Thread; onBac
   useLayoutEffect(() => {
     bottom.current?.scrollIntoView({ block: 'end' });
   }, [bubbles.length, thread.id]);
+
+  /*
+   * 出たての一通。
+   *
+   * 眺めているあいだに届いたものだけ、ふわりと入るようにしてある。開き直した
+   * ときに全部が動くと、何が新しいのか分からなくなる。
+   */
+  const isFresh = (at: string): boolean => now.getTime() - new Date(at).getTime() < FRESH_MS;
 
   let lastLabel = '';
 
@@ -57,7 +65,7 @@ export function Chat({ thread, onBack, onOpenHandover }: { thread: Thread; onBac
                 ? thread.theirs === 'agent_only'
                   ? '相手は代理人が応対しています'
                   : '引き継ぎ済み'
-                : `代理人が応対中 · ${Math.min(elapsedDays(thread, now, settings.dayMs), thread.days ?? 0)} / ${thread.days} 日`}
+                : `代理人が応対中 · ${ready ? (thread.days ?? 0) : Math.min(storyDay(thread, now), thread.days ?? 0)} / ${thread.days} 日`}
           </div>
         </div>
       </header>
@@ -97,6 +105,7 @@ export function Chat({ thread, onBack, onOpenHandover }: { thread: Thread; onBac
               bubble={bubble}
               showLabel={newLabel}
               showAgentMark={inherited}
+              fresh={isFresh(bubble.at)}
               onAnswer={(answer) => {
                 if (bubble.ask) void answerAsk(thread.id, bubble.ask.id, answer);
               }}
@@ -170,15 +179,20 @@ export function Chat({ thread, onBack, onOpenHandover }: { thread: Thread; onBac
   );
 }
 
+/** 届いてから、出たての印を出しておく長さ。 */
+const FRESH_MS = 2_500;
+
 function Turn({
   bubble,
   showLabel,
   showAgentMark,
+  fresh,
   onAnswer,
 }: {
   bubble: Bubble;
   showLabel: boolean;
   showAgentMark: boolean;
+  fresh: boolean;
   onAnswer: (answer: AskAnswer) => void;
 }) {
   return (
@@ -186,9 +200,9 @@ function Turn({
       {bubble.silence ? <div className="silence">（{bubble.silence} 日間、やり取りが止まりました）</div> : null}
       {showLabel ? <div className="daystamp">{bubble.dayLabel}</div> : null}
       {bubble.divider ? <div className="divider">{bubble.divider}</div> : null}
-      {bubble.ask ? <Ask ask={bubble.ask} onAnswer={onAnswer} /> : null}
+      {bubble.ask ? <Ask ask={bubble.ask} fresh={fresh} onAnswer={onAnswer} /> : null}
       {bubble.ask ? null : (
-      <div className={`bubblerow bubblerow--${bubble.side}`}>
+      <div className={`bubblerow bubblerow--${bubble.side}${fresh ? ' bubblerow--fresh' : ''}`}>
         <div className={`bubble${bubble.byAgent ? ' bubble--agent' : ''}`}>{bubble.text}</div>
         <div className="bubble__meta">
           {bubble.byAgent && showAgentMark ? <span className="agentmark">代</span> : null}
@@ -209,15 +223,17 @@ function Turn({
  */
 function Ask({
   ask,
+  fresh,
   onAnswer,
 }: {
   ask: NonNullable<Bubble['ask']>;
+  fresh: boolean;
   onAnswer: (answer: AskAnswer) => void;
 }) {
   const label: Record<AskAnswer, string> = { yes: 'はい', no: 'いいえ', skip: '答えない' };
 
   return (
-    <div className="askcard">
+    <div className={`askcard${fresh ? ' askcard--fresh' : ''}`}>
       <div className="askcard__head">代理人からの確認</div>
       <p className="askcard__text">{ask.text}</p>
       {ask.answered ? (
