@@ -15,6 +15,18 @@
 
 export const DECAY_PER_DAY = 0.6;
 
+/**
+ * 代理人同士の親密度。
+ *
+ * 人間相手の関係より高く出る。代理人は返信が早く、相手の話を忘れず、
+ * いつでも都合がつく。**人間には勝てない条件で築かれた関係**を引き継ぐ
+ * ことになる、というのがこの数字の意味。上限は 95。
+ */
+export function closenessOf(days: number, persona: number, rand: () => number): number {
+  const base = 48 + Math.min(days, 90) * 0.24 + persona * 0.16 + rand() * 6;
+  return Math.max(40, Math.min(95, Math.round(base)));
+}
+
 export function effectiveCloseness(base: number, delta: number, elapsedDays: number): number {
   const decayed = base + delta - elapsedDays * DECAY_PER_DAY;
   return Math.max(0, Math.min(100, Math.round(decayed)));

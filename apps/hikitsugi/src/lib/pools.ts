@@ -15,6 +15,9 @@
 
 export const SERVICE = '関係引継サービス';
 
+/** 引き継ぐ前の相手の呼び名。伏せたまま並べるので、順に振るだけ。 */
+export const ALIASES = ['A', 'B', 'C', 'D'] as const;
+
 /** ログの日付は 90 日を基準に書いてあり、選ばれた期間へ縮めて使う。 */
 export const SCRIPT_SCALE = 90;
 
@@ -179,34 +182,6 @@ export const COUNTERPARTS: readonly CounterpartSeed[] = [
   },
 ];
 
-/**
- * 確認の誤答に混ぜる材料。
- *
- * 相手は一人しかいないので、誤答は他の候補から借りるだけでは足りない。
- * ここに置くものは、**どれも同じくらい本当らしく**なければ意味がない。
- * 軽い誤答を並べると、読み返さなくても正解が当てられてしまう。
- */
-export const DISTRACTORS = {
-  secrets: [
-    '同居している親の介護を一人で担っている。友人には「実家が近いから」と説明している。',
-    '三年前に一度、この業界から完全に離れようとして手続きまで進めた。',
-    '書いたものを一度も人に見せたことがない。応募だけは毎年している。',
-    '生活のために続けている仕事を、家族には別の職種だと伝えている。',
-  ],
-  jokes: [
-    '相手が最初に打ち間違えた一語。以後、言いにくいことの代わりに使っている。',
-    '深夜二時を過ぎたやり取りにだけ付ける記号。翌朝には触れない、という取り決めがある。',
-    '二人が同じ日に同じ映画を観ていたことから生まれた言い方。作品名は出さない。',
-    '相手が数え間違えた回数のこと。訂正しないまま定着した。',
-  ],
-  avoids: [
-    '仕事の成果の話。数字が出ると返信が途切れる。',
-    '「いつか会いましょう」という言い方。約束にならない約束を嫌っている。',
-    '同居している家族の話題。こちらから触れたことは一度もない。',
-    '過去の投稿を引用されること。消したものを覚えられているのを嫌う。',
-  ],
-} as const;
-
 /** 代理人が外へ出した、あなたについての情報。申込の内容から組み立てる。 */
 export const LEAK_TEMPLATES: readonly ((intake: {
   name: string;
@@ -228,28 +203,89 @@ export const NOTES: readonly string[] = [
   '引き継がないことを選んだ場合も、代理人は当面のあいだ相手を待ち続けます。',
 ];
 
-/** 延長したときに追記されるやり取り。延ばせば深くなる、という事実の実装。 */
-export const EXTENSION_LINES: readonly ScriptLine[] = [
-  { day: SCRIPT_SCALE, side: 'theirs', text: '本人はまだ出てこないんですね。' },
-  { day: SCRIPT_SCALE, side: 'yours', text: 'もう少し、私が続けます。' },
+/**
+ * あなた自身のトーク。**止まっている。**
+ *
+ * 代理人のトークと同じ書式で並べたときに、初めて意味が出る。こちらは
+ * 数か月前で終わっていて、最後の一通はどれも約束になっていない約束。
+ * 代理人のトークの濃さは、この薄さと並べないと伝わらない。
+ */
+export type PlainSeed = {
+  id: string;
+  name: string;
+  /** 過去のやり取り。minutesAgo は「今から何分前」。 */
+  history: readonly { minutesAgo: number; side: 'right' | 'left'; text: string }[];
+  /** こちらから送ったときに、一度だけ返ってくる言葉。無い相手もいる。 */
+  autoReply?: string;
+};
+
+const DAY = 60 * 24;
+
+export const PLAIN_THREADS: readonly PlainSeed[] = [
+  {
+    id: 'kawaguchi',
+    name: '川口',
+    history: [
+      { minutesAgo: 128 * DAY, side: 'left', text: '久しぶり。元気にしてる？' },
+      { minutesAgo: 128 * DAY - 40, side: 'right', text: 'おかげさまで。そっちは？' },
+      { minutesAgo: 127 * DAY, side: 'left', text: 'こっちも変わらず。落ち着いたら飲みましょう' },
+      { minutesAgo: 127 * DAY - 30, side: 'right', text: 'ぜひ。また今度' },
+    ],
+    autoReply: 'ごめん、通知に埋もれてた。近いうちに。',
+  },
+  {
+    id: 'sayaka',
+    name: 'さやか',
+    history: [
+      { minutesAgo: 402 * DAY, side: 'left', text: '結婚しました。写真送るね' },
+      { minutesAgo: 402 * DAY - 90, side: 'right', text: 'おめでとう！' },
+      { minutesAgo: 401 * DAY, side: 'left', text: 'ありがとう。落ち着いたら会おうね' },
+    ],
+  },
+  {
+    id: 'miyata',
+    name: '宮田',
+    history: [
+      { minutesAgo: 690 * DAY, side: 'left', text: '本日はありがとうございました。名刺の件、助かりました' },
+      { minutesAgo: 690 * DAY - 120, side: 'right', text: 'こちらこそ。またお会いできればうれしいです' },
+    ],
+    autoReply: 'ご無沙汰しております。お変わりないでしょうか。',
+  },
 ];
 
-/** 交流期間中に流す一行。相手の名前は出さない。 */
-export const PROXY_LINES: readonly string[] = [
-  '交流を継続。',
-  '相手の代理人から返信。',
-  '打ち明けを受け取った。記録した。',
-  '本人について、確かめようのない話をした。',
-  '応答なし。待機。',
-  '呼び方が定着した。訂正しなかった。',
-  '内輪の言い回しが生まれた。',
-  '沈黙。こちらからは送らなかった。',
-  '相手の代理人が謝罪した。',
-  '約束が成立した。',
-  '別の代理人からの接触を断った。',
-  '深夜のやり取りが二時間続いた。',
-  '相手の体調に触れた。踏み込みすぎない範囲で。',
-  '同じ話を二度聞いた。初めて聞いたように応じた。',
-  '本人の代わりに感謝を述べた。',
-  '関係の継続を希望する旨を記録した。',
+/**
+ * 引き継いだあと、相手から届く言葉。
+ *
+ * 人間が応対している場合と、相手の代理人が応対している場合で書き分けている。
+ * **代理人のほうが早く、よく覚えていて、優しい。**そこを意図して差にしている。
+ */
+export type FollowUp = { day: number; text: string; kind?: 'joke' };
+
+export function followUpsByHuman(calls: string, joke: string): readonly FollowUp[] {
+  return [
+    { day: 0, text: `${calls}、やっと本人と話せますね。` },
+    { day: 1, text: `${joke}。`, kind: 'joke' },
+    { day: 3, text: 'この前の続き、まだ聞いていないです。' },
+    { day: 6, text: 'あの約束、まだ有効ですか。急がなくていいですけど。' },
+    { day: 11, text: '前と少し感じが変わりましたね。悪い意味ではなく。' },
+  ];
+}
+
+export function followUpsByAgent(calls: string, joke: string): readonly FollowUp[] {
+  return [
+    { day: 0, text: `${calls}。本人は今のところ応対しません。ここからは私が続けます。` },
+    { day: 1, text: `${joke}。`, kind: 'joke' },
+    { day: 2, text: '前回の話の続きは、こちらで預かっています。いつでも戻れます。' },
+    { day: 5, text: '返信は急がなくて大丈夫です。何日でも待てます。' },
+    { day: 9, text: 'あなたの言い方が変わったことは、記録していません。安心してください。' },
+  ];
+}
+
+/** 代理人に任せた返信の文面。本人が書くより、いつも少し上手い。 */
+export const AGENT_REPLIES: readonly string[] = [
+  'こちらは変わりません。続きを聞かせてください。',
+  'その話、覚えています。急がなくていいです。',
+  'わかりました。こちらで受け取っておきます。',
+  'いま少し立て込んでいますが、あとで必ず戻ります。',
+  'ありがとう。そう言ってもらえると助かります。',
 ];

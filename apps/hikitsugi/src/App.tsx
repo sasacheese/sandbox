@@ -1,18 +1,21 @@
 import { useState } from 'react';
-import { Contacts, Pledges, Released, Settings } from './components/After.tsx';
+import { Chat } from './components/Chat.tsx';
+import { ChatList } from './components/ChatList.tsx';
 import { Gate } from './components/Gate.tsx';
-import { HandoverView } from './components/HandoverView.tsx';
+import { HandoverSheet } from './components/HandoverSheet.tsx';
 import { Intake } from './components/Intake.tsx';
-import { Proxy } from './components/Proxy.tsx';
-import { Result } from './components/Result.tsx';
+import { Settings } from './components/Settings.tsx';
 import { TabBar, type Tab } from './components/TabBar.tsx';
 import { unlocked } from './lib/gate.ts';
+import { bubblesOf, unreadOf } from './lib/threads.ts';
 import { useStore } from './store.tsx';
 
 export function App() {
-  const { ready, phase, enter, messages, after, elapsed } = useStore();
+  const store = useStore();
   const [entered, setEntered] = useState(() => unlocked());
-  const [tab, setTab] = useState<Tab>('contacts');
+  const [tab, setTab] = useState<Tab>('mine');
+  const [openId, setOpenId] = useState<string | null>(null);
+  const [sheetId, setSheetId] = useState<string | null>(null);
 
   if (!entered) {
     return (
@@ -22,9 +25,9 @@ export function App() {
     );
   }
 
-  if (!ready) return <div className="app" />;
+  if (!store.ready) return <div className="app" />;
 
-  if (phase === 'intake') {
+  if (!store.intake) {
     return (
       <div className="app">
         <Intake />
@@ -32,50 +35,30 @@ export function App() {
     );
   }
 
-  if (phase === 'proxy') {
+  const open = openId ? store.threads.find((t) => t.id === openId) : null;
+
+  if (open) {
     return (
       <div className="app">
-        <Proxy />
+        <Chat thread={open} onBack={() => setOpenId(null)} onOpenHandover={() => setSheetId(open.id)} />
+        {sheetId ? <HandoverSheet threadId={sheetId} onClose={() => setSheetId(null)} /> : null}
       </div>
     );
   }
 
-  if (phase === 'handover') {
-    return (
-      <div className="app">
-        <HandoverView decidable />
-      </div>
+  // 未読の合計。タブの右上に出す
+  const unread = (kind: 'mine' | 'proxy'): number =>
+    (kind === 'mine' ? store.mine : store.proxies).reduce(
+      (sum, thread) => sum + unreadOf(thread, bubblesOf(thread, store.now, store.settings.dayMs)),
+      0,
     );
-  }
-
-  if (phase === 'result') {
-    return (
-      <div className="app">
-        <Result onNext={() => void enter()} />
-      </div>
-    );
-  }
-
-  if (phase === 'released') {
-    return (
-      <div className="app">
-        <Released />
-      </div>
-    );
-  }
-
-  // 未回答の確認と、返していない連絡の数。放っておくと溜まる
-  const pending = messages.filter(
-    (m) => m.day <= elapsed && ((m.questionId && !after.answers[m.questionId]) || !after.replies[m.id]),
-  ).length;
 
   return (
     <div className="app">
-      {tab === 'contacts' ? <Contacts /> : null}
-      {tab === 'handover' ? <HandoverView /> : null}
-      {tab === 'pledges' ? <Pledges /> : null}
-      {tab === 'settings' ? <Settings onReset={() => setTab('contacts')} /> : null}
-      <TabBar current={tab} onChange={setTab} unread={pending} />
+      {tab === 'mine' ? <ChatList kind="mine" onOpen={setOpenId} /> : null}
+      {tab === 'proxy' ? <ChatList kind="proxy" onOpen={setOpenId} /> : null}
+      {tab === 'settings' ? <Settings /> : null}
+      <TabBar current={tab} onChange={setTab} badges={{ mine: unread('mine'), proxy: unread('proxy') }} />
     </div>
   );
 }

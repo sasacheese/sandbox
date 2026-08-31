@@ -1,91 +1,48 @@
 /**
  * 状態。
  *
- * 申込 → 交流 → 引継書 → 判断 → その後（または代理人へ継続）。
- *
- * 判断のところだけ分岐があり、それ以外は一本道。**引き継がない道も、
- * 引き継いだあとに代理人へ戻す道も用意してある**のが、この作品の要点。
- * どの道を選んでも失うものがあるので、「正解の分岐」は無い。
+ * 画面はメッセンジャーなので、状態も**トークの配列ひとつ**に寄せてある。
+ * 吹き出しは保存しない（トークの種類・経過・自分が打ったものから毎回組み立てる）。
+ * 保存するのは、自分が打ったものと、判断と、既読の位置だけ。
  */
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import {
-  CLOSENESS_ON_AGENT_REPLY,
-  CLOSENESS_ON_RIGHT,
-  CLOSENESS_ON_SELF_REPLY,
-  CLOSENESS_ON_WRONG,
-  messages as buildMessages,
-  questions as buildQuestions,
-  type Question,
-} from './lib/after.ts';
-import { effectiveCloseness } from './lib/closeness.ts';
 import * as db from './lib/db.ts';
-import { buildHandover, daysSinceHandover } from './lib/generate.ts';
-import { EXTENSION_LINES } from './lib/pools.ts';
-import { isoTime, type Decision, type Handover, type Intake, type Message, type Phase, type Pledge } from './lib/types.ts';
-
-type PledgeStatus = Pledge['status'];
+import { buildHandover, buildThreads } from './lib/generate.ts';
+import { DEFAULT_DAY_MS, agentReplyText, bubblesOf, isReady } from './lib/threads.ts';
+import { isoTime, type Decision, type Handover, type Intake, type Thread } from './lib/types.ts';
 
 const KV_INTAKE = 'intake';
-const KV_HANDOVER = 'handover';
-const KV_PHASE = 'phase';
-const KV_STATE = 'state';
+const KV_THREADS = 'threads';
+const KV_SETTINGS = 'settings';
 
-/** 交流期間の一日を、実時間で何ミリ秒で流すか。 */
-export const MS_PER_PROXY_DAY = 380;
+export type Settings = { dayMs: number };
 
-/** 延長は一回 14 日。 */
-export const EXTENSION_DAYS = 14;
-
-export type Answer = { choice: number; correct: boolean };
-export type ReplyKind = 'self' | 'agent';
-
-export type AfterState = {
-  decision: Decision | null;
-  answers: Record<string, Answer>;
-  replies: Record<string, ReplyKind>;
-  /** 親密度の増減。相手は一人なので数値ひとつ。 */
-  delta: number;
-  pledges: Record<string, PledgeStatus>;
-  /** その後の時間の倍率。既定は 1 日 = 1 時間。 */
-  rate: number;
-  extended: number;
-};
-
-const EMPTY_AFTER: AfterState = { decision: null, answers: {}, replies: {}, delta: 0, pledges: {}, rate: 24, extended: 0 };
+const DEFAULT_SETTINGS: Settings = { dayMs: DEFAULT_DAY_MS };
 
 export type Store = {
   ready: boolean;
   persistent: boolean;
-  phase: Phase;
   intake: Intake | null;
-  handover: Handover | null;
-  questions: Question[];
-  messages: Message[];
-  after: AfterState;
-  elapsed: number;
-  horizon: number;
-  /**
-   * 相手の氏名を出してよいか。
-   *
-   * **双方が引き継いだ場合だけ**開示される。こちらが引き継いでも、相手が
-   * 代理人に任せた（または拒否した）場合は最後まで「A」のまま。
-   * 申込書の条項にそう書いてあるので、実装がそれを破ってはいけない。
-   */
-  revealed: boolean;
-  closeness: number;
-  inherited: number;
-  /** 代理人に任せた返信の数。 */
-  agentReplies: number;
+  threads: Thread[];
+  settings: Settings;
+  /** 画面を動かすための時計。 */
+  now: Date;
+
+  /** 自分のトーク（止まっているもの＋引き継いだもの）。 */
+  mine: Thread[];
+  /** 代理人のトーク（まだ引き継いでいないもの）。 */
+  proxies: Thread[];
+
+  handoverFor: (threadId: string) => Handover | null;
+  readyCount: number;
 
   apply: (input: Omit<Intake, 'startedAt'>) => Promise<void>;
-  receive: () => Promise<void>;
-  decide: (decision: Decision) => Promise<void>;
-  enter: () => Promise<void>;
-  answer: (questionId: string, choice: number) => Promise<void>;
-  reply: (messageId: string, kind: ReplyKind) => Promise<void>;
-  setPledge: (pledgeId: string, status: PledgeStatus) => Promise<void>;
-  setRate: (rate: number) => Promise<void>;
+  send: (threadId: string, text: string) => Promise<void>;
+  delegate: (threadId: string) => Promise<void>;
+  markRead: (threadId: string) => Promise<void>;
+  decide: (threadId: string, decision: Decision) => Promise<void>;
+  setDayMs: (dayMs: number) => Promise<void>;
   reset: () => Promise<void>;
 };
 
@@ -97,24 +54,35 @@ export function useStore(): Store {
   return store;
 }
 
+function newId(prefix: string): string {
+  const random =
+    typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID().slice(0, 8) : Math.random().toString(36).slice(2, 10);
+  return `${prefix}-${Date.now().toString(36)}-${random}`;
+}
+
 export function StoreProvider({ children }: { children: ReactNode }) {
   const [ready, setReady] = useState(false);
   const [persistent, setPersistent] = useState(true);
-  const [phase, setPhase] = useState<Phase>('intake');
   const [intake, setIntake] = useState<Intake | null>(null);
-  const [handover, setHandover] = useState<Handover | null>(null);
-  const [after, setAfter] = useState<AfterState>(EMPTY_AFTER);
-  const [clock, setClock] = useState(() => new Date());
+  const [threads, setThreads] = useState<Thread[]>([]);
+  const [settings, setSettings] = useState<Settings>(DEFAULT_SETTINGS);
+  const [now, setNow] = useState(() => new Date());
 
-  const afterRef = useRef(after);
+  const threadsRef = useRef(threads);
   useEffect(() => {
-    afterRef.current = after;
-  }, [after]);
+    threadsRef.current = threads;
+  }, [threads]);
 
+  /*
+   * 時計。
+   *
+   * 代理人のトークは開いていなくても進むので、一定間隔で now を配る。
+   * 1 秒ごとにしているのは、既定の一日が 3 秒で、待っている実感が要るから。
+   */
   useEffect(() => {
-    const timer = setInterval(() => setClock(new Date()), 5_000);
+    const timer = setInterval(() => setNow(new Date()), 1_000);
     const onVisible = () => {
-      if (document.visibilityState === 'visible') setClock(new Date());
+      if (document.visibilityState === 'visible') setNow(new Date());
     };
     document.addEventListener('visibilitychange', onVisible);
     return () => {
@@ -131,17 +99,15 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       setPersistent(ok);
       if (!ok) return;
       db.requestPersistence().catch(() => undefined);
-      const [loadedIntake, loadedHandover, loadedPhase, loadedState] = await Promise.all([
+      const [loadedIntake, loadedThreads, loadedSettings] = await Promise.all([
         db.readKv<Intake>(KV_INTAKE),
-        db.readKv<Handover>(KV_HANDOVER),
-        db.readKv<Phase>(KV_PHASE),
-        db.readKv<AfterState>(KV_STATE),
+        db.readKv<Thread[]>(KV_THREADS),
+        db.readKv<Settings>(KV_SETTINGS),
       ]);
       if (cancelled) return;
       setIntake(loadedIntake);
-      setHandover(loadedHandover);
-      if (loadedPhase) setPhase(loadedPhase);
-      if (loadedState) setAfter({ ...EMPTY_AFTER, ...loadedState });
+      if (loadedThreads) setThreads(loadedThreads);
+      if (loadedSettings) setSettings({ ...DEFAULT_SETTINGS, ...loadedSettings });
     })()
       .catch(() => undefined)
       .finally(() => {
@@ -159,189 +125,147 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     [persistent],
   );
 
-  const saveAfter = useCallback(
-    async (next: AfterState) => {
-      afterRef.current = next;
-      setAfter(next);
-      await save(KV_STATE, next);
+  /** 一本だけ差し替える。続けて呼ばれても取りこぼさないよう ref から作る。 */
+  const patch = useCallback(
+    async (threadId: string, change: (thread: Thread) => Thread) => {
+      const next = threadsRef.current.map((thread) => (thread.id === threadId ? change(thread) : thread));
+      threadsRef.current = next;
+      setThreads(next);
+      await save(KV_THREADS, next);
     },
     [save],
   );
 
   const apply = useCallback(
     async (input: Omit<Intake, 'startedAt'>) => {
-      const next: Intake = { ...input, startedAt: isoTime(new Date()) };
+      const at = new Date();
+      const nextIntake: Intake = { ...input, startedAt: isoTime(at) };
       /*
-       * 引継書は申込の時点で組み立てて保存する。
+       * 代理人のトークは、申込の時点で**すでに進んでいる**。
        *
-       * 交流期間のあいだ本人には見せないが、**中身はもう決まっている**。
-       * 相手側の人間の判断まで、この瞬間に確定している。
+       * 一本は満了、一本は途中、一本は始まったばかり。これから始まるのではなく、
+       * もう進んでいたものを見せられる、という順序をここで作っている。
        */
-      const built = buildHandover(next, new Date(), Math.random);
-      setIntake(next);
-      setHandover(built);
-      setPhase('proxy');
-      await saveAfter(EMPTY_AFTER);
-      await save(KV_INTAKE, next);
-      await save(KV_HANDOVER, built);
-      await save(KV_PHASE, 'proxy');
+      const nextThreads = buildThreads(at, Math.random);
+      setIntake(nextIntake);
+      threadsRef.current = nextThreads;
+      setThreads(nextThreads);
+      await save(KV_INTAKE, nextIntake);
+      await save(KV_THREADS, nextThreads);
     },
-    [save, saveAfter],
+    [save],
   );
 
-  const receive = useCallback(async () => {
-    setPhase('handover');
-    await save(KV_PHASE, 'handover');
-  }, [save]);
+  const send = useCallback(
+    async (threadId: string, text: string) => {
+      const trimmed = text.trim();
+      if (!trimmed) return;
+      await patch(threadId, (thread) => ({
+        ...thread,
+        sent: [...thread.sent, { id: newId('me'), at: isoTime(new Date()), text: trimmed, byAgent: false }],
+        /*
+         * 自分で打つと親密度が下がる。
+         *
+         * 代理人のほうが返信が早く、相手の話を忘れず、言葉を選べる。
+         * **人間には勝てない条件で築かれた関係**を引き継いだ結果がこれ。
+         */
+        delta: thread.decision === 'inherit' ? thread.delta - 8 : thread.delta,
+      }));
+    },
+    [patch],
+  );
 
-  /**
-   * 本人の判断。
-   *
-   * 「もう少し続けさせる」だけは分岐が特別で、交流期間へ戻る。延ばせば
-   * 親密度は上がり、やり取りも増える。**延ばすほど引き継ぎにくくなる**。
-   */
+  const delegate = useCallback(
+    async (threadId: string) => {
+      const thread = threadsRef.current.find((t) => t.id === threadId);
+      if (!thread) return;
+      const text = agentReplyText(thread);
+      await patch(threadId, (current) => ({
+        ...current,
+        sent: [...current.sent, { id: newId('ag'), at: isoTime(new Date()), text, byAgent: true }],
+        delta: current.decision === 'inherit' ? current.delta + 1 : current.delta,
+      }));
+    },
+    [patch],
+  );
+
+  const markRead = useCallback(
+    async (threadId: string) => {
+      await patch(threadId, (thread) => ({ ...thread, readAt: isoTime(new Date()) }));
+    },
+    [patch],
+  );
+
   const decide = useCallback(
-    async (decision: Decision) => {
-      if (!intake || !handover) return;
-      if (decision === 'extend') {
-        const days = intake.days + EXTENSION_DAYS;
-        const nextIntake: Intake = { ...intake, days, startedAt: isoTime(new Date()) };
-        const extra = EXTENSION_LINES.map((line) => ({ ...line, day: days }));
-        const nextHandover: Handover = {
-          ...handover,
-          days,
-          counterpart: { ...handover.counterpart, closeness: Math.min(95, handover.counterpart.closeness + 4) },
-          exchanges: [...handover.exchanges, ...extra],
-        };
-        setIntake(nextIntake);
-        setHandover(nextHandover);
-        setPhase('proxy');
-        await saveAfter({ ...afterRef.current, extended: afterRef.current.extended + 1 });
-        await save(KV_INTAKE, nextIntake);
-        await save(KV_HANDOVER, nextHandover);
-        await save(KV_PHASE, 'proxy');
-        return;
-      }
-      await saveAfter({ ...afterRef.current, decision });
-      setPhase('result');
-      await save(KV_PHASE, 'result');
+    async (threadId: string, decision: Decision) => {
+      const thread = threadsRef.current.find((t) => t.id === threadId);
+      const handover = thread && intake ? buildHandover(thread, intake) : null;
+      /*
+       * 双方が引き継いだときだけ、表題が伏せ名から氏名へ変わる。
+       *
+       * 一覧に実名が現れるのが引き継ぎの合図になる。片側だけの引き継ぎでは
+       * 最後まで「A」のままで、申込書の条項（氏名は双方の希望があるときのみ
+       * 開示）を実装が破らないようにしている。
+       */
+      const reveal = decision === 'inherit' && handover?.theirs === 'inherit';
+      await patch(threadId, (current) => ({
+        ...current,
+        decision,
+        ...(reveal && handover ? { title: handover.name } : {}),
+        ...(decision === 'inherit' ? { inheritedAt: isoTime(new Date()) } : {}),
+      }));
     },
-    [handover, intake, save, saveAfter],
+    [intake, patch],
   );
 
-  /** 結果を読んだあと、その後の画面へ進む。 */
-  const enter = useCallback(async () => {
-    const decision = afterRef.current.decision;
-    const next: Phase = decision === 'inherit' && handover?.theirs !== 'refuse' ? 'after' : 'released';
-    setPhase(next);
-    await save(KV_PHASE, next);
-  }, [handover?.theirs, save]);
-
-  const questions = useMemo(() => (handover ? buildQuestions(handover, seeded(handover.serial)) : []), [handover]);
-  const messages = useMemo(
-    () => (handover && after.decision ? buildMessages(handover, after.decision) : []),
-    [after.decision, handover],
-  );
-
-  const answer = useCallback(
-    async (questionId: string, choice: number) => {
-      const question = questions.find((q) => q.id === questionId);
-      const state = afterRef.current;
-      if (!question || state.answers[questionId]) return;
-      const correct = choice === question.answer;
-      await saveAfter({
-        ...state,
-        answers: { ...state.answers, [questionId]: { choice, correct } },
-        delta: state.delta + (correct ? CLOSENESS_ON_RIGHT : CLOSENESS_ON_WRONG),
-      });
+  const setDayMs = useCallback(
+    async (dayMs: number) => {
+      const next = { ...settings, dayMs };
+      setSettings(next);
+      await save(KV_SETTINGS, next);
     },
-    [questions, saveAfter],
-  );
-
-  /**
-   * 返し方を選ぶ。
-   *
-   * 自分の言葉で返すと下がり、代理人に任せると下がらない。**下がらない方を
-   * 選び続けると、自分は一度もこの関係に参加しないまま維持される。**
-   */
-  const reply = useCallback(
-    async (messageId: string, kind: ReplyKind) => {
-      const state = afterRef.current;
-      if (state.replies[messageId]) return;
-      await saveAfter({
-        ...state,
-        replies: { ...state.replies, [messageId]: kind },
-        delta: state.delta + (kind === 'self' ? CLOSENESS_ON_SELF_REPLY : CLOSENESS_ON_AGENT_REPLY),
-      });
-    },
-    [saveAfter],
-  );
-
-  const setPledge = useCallback(
-    async (pledgeId: string, status: PledgeStatus) => {
-      const state = afterRef.current;
-      await saveAfter({ ...state, pledges: { ...state.pledges, [pledgeId]: status } });
-    },
-    [saveAfter],
-  );
-
-  const setRate = useCallback(
-    async (rate: number) => {
-      await saveAfter({ ...afterRef.current, rate });
-    },
-    [saveAfter],
+    [save, settings],
   );
 
   const reset = useCallback(async () => {
     if (persistent) await db.wipe().catch(() => undefined);
     setIntake(null);
-    setHandover(null);
-    setPhase('intake');
-    afterRef.current = EMPTY_AFTER;
-    setAfter(EMPTY_AFTER);
+    threadsRef.current = [];
+    setThreads([]);
+    setSettings(DEFAULT_SETTINGS);
   }, [persistent]);
 
   const value = useMemo<Store>(() => {
-    const counting = phase === 'after' || phase === 'released';
-    const elapsed = handover && counting ? daysSinceHandover(handover, clock, after.rate) : 0;
-    const inherited = handover?.counterpart.closeness ?? 0;
+    const mine = threads.filter((t) => t.kind === 'plain' || t.decision === 'inherit');
+    const proxies = threads.filter((t) => t.kind === 'proxy' && t.decision !== 'inherit');
     return {
       ready,
       persistent,
-      phase,
       intake,
-      handover,
-      questions,
-      messages,
-      after,
-      elapsed,
-      horizon: Math.max(14, ...(handover?.pledges.map((p) => p.dueDay) ?? [14])),
-      revealed: after.decision === 'inherit' && handover?.theirs === 'inherit',
-      inherited,
-      closeness: effectiveCloseness(inherited, after.delta, elapsed),
-      agentReplies: Object.values(after.replies).filter((kind) => kind === 'agent').length,
+      threads,
+      settings,
+      now,
+      // 引き継いだものは新しいので上へ。自分のトークは最後のやり取りが古い順に下がる
+      mine: [...mine].sort((a, b) => lastAt(b, now, settings.dayMs).localeCompare(lastAt(a, now, settings.dayMs))),
+      proxies: [...proxies].sort((a, b) => (a.title < b.title ? -1 : 1)),
+      handoverFor: (threadId) => {
+        const thread = threads.find((t) => t.id === threadId);
+        return thread && intake ? buildHandover(thread, intake) : null;
+      },
+      readyCount: proxies.filter((t) => isReady(t, now, settings.dayMs)).length,
       apply,
-      receive,
+      send,
+      delegate,
+      markRead,
       decide,
-      enter,
-      answer,
-      reply,
-      setPledge,
-      setRate,
+      setDayMs,
       reset,
     };
-  }, [after, answer, apply, clock, decide, enter, handover, intake, messages, persistent, phase, questions, ready, receive, reply, reset, setPledge, setRate]);
+  }, [apply, decide, delegate, intake, markRead, now, persistent, ready, reset, send, setDayMs, settings, threads]);
 
   return <StoreContext.Provider value={value}>{children}</StoreContext.Provider>;
 }
 
-/** 引継書の番号から作る乱数。同じ書類からは必ず同じ問いが出る。 */
-function seeded(key: string): () => number {
-  let state = 0;
-  for (const ch of key) state = (state * 31 + (ch.codePointAt(0) ?? 0)) % 2147483647;
-  if (state === 0) state = 1;
-  return () => {
-    state = (state * 1103515245 + 12345) % 2147483648;
-    return state / 2147483648;
-  };
+function lastAt(thread: Thread, now: Date, dayMs: number): string {
+  return bubblesOf(thread, now, dayMs).at(-1)?.at ?? '';
 }

@@ -1,21 +1,27 @@
 /*
  * 「関係引継サービス」の見た目。
  *
- * 方針は一つ——**書類に見えること**。
+ * 画面は二つの層でできている。
  *
- * 1. 地は事務用の紙。暗い側は用意しない。書類に夜の顔は無い。
- * 2. 引継書の本文は明朝、画面の部品はゴシック。読むものと操作するものを
- *    書体で分ける。契約書の体裁がそのまま不気味さになる。
- * 3. 色は二つ。墨と、代理人の茶。**茶が付いているものは、本人が作ったのではない**
- *    という規則で徹底する（作り話・漏らした情報・代理人のやり取り）。
- * 4. 罫線で仕切る。カードを浮かせない。影を使わない。
+ * 1. **メッセンジャー**——普通のトークアプリに見えないと成立しない。トークが
+ *    二種類あることだけが普通ではないので、書式は両タブで完全に同じにする。
+ * 2. **書類**——引継書。契約書の体裁がそのまま不気味さになる。本文は明朝。
+ *
+ * 色の規則を一本にして、両方の層で守る。
+ *   墨　＝ あなたが書いた／あなたが足したぶん
+ *   茶　＝ 代理人が書いた／代理人が築いたぶん
+ *   白　＝ 相手の人間が書いた
+ *   朱　＝ 事実に基づかない発言の注記、未読、失ったぶん
+ *
+ * 暗い側の配色は用意しない。書類に夜の顔は無いのと、トークの地が暗いと
+ * 茶と墨の差が読めなくなるため。
  */
 
 :root {
   color-scheme: light;
 
-  --paper: #f4f1ea;
-  --sheet: #fbf9f5;
+  --paper: #f2efe8;
+  --sheet: #faf8f4;
   --ink: #2b2721;
   --ink-dim: #57514a;
   --muted: #857e75;
@@ -23,13 +29,12 @@
   --rule: #ddd6c9;
   --rule-strong: #c3baa9;
 
-  /* 代理人の色。本人の手によらないものに付ける */
   --proxy: #8f6a3d;
-  --proxy-soft: #f2e9dc;
+  --proxy-soft: #f3ead9;
   --warn: #a3402f;
 
   --radius: 3px;
-  --pad: 16px;
+  --pad: 15px;
   --measure: 520px;
 
   --sans: -apple-system, BlinkMacSystemFont, 'Hiragino Sans', 'Noto Sans JP', system-ui, sans-serif;
@@ -60,8 +65,7 @@ body {
 
 button,
 input,
-textarea,
-select {
+textarea {
   font: inherit;
   color: inherit;
 }
@@ -72,7 +76,6 @@ button {
 
 h1,
 h2,
-h3,
 p {
   margin: 0;
 }
@@ -84,42 +87,7 @@ p {
   min-height: 100dvh;
   display: flex;
   flex-direction: column;
-}
-
-.screen {
-  flex: 1;
-  padding: calc(env(safe-area-inset-top) + 10px) var(--pad) 96px;
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-
-.screen--flow {
-  padding-bottom: calc(env(safe-area-inset-bottom) + 24px);
-}
-
-/* ------------------------------------------------------------ 見出し */
-
-.brand {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  padding-bottom: 10px;
-  border-bottom: 1px solid var(--rule-strong);
-}
-
-.brand__name {
-  font-family: var(--serif);
-  font-size: 15px;
-  letter-spacing: 0.14em;
-}
-
-.brand__no {
-  font-family: var(--mono);
-  font-size: 10.5px;
-  letter-spacing: 0.1em;
-  color: var(--muted);
+  background: var(--paper);
 }
 
 .label {
@@ -130,35 +98,613 @@ p {
   color: var(--muted);
 }
 
-.ja-label {
-  font-size: 11.5px;
-  color: var(--muted);
-  letter-spacing: 0.04em;
-}
-
 .sub {
   font-size: 12.5px;
   color: var(--muted);
+  line-height: 1.8;
 }
 
-.serif {
-  font-family: var(--serif);
-}
-
-/* 書類の本文。ここだけ明朝で組む */
 .doc {
   font-family: var(--serif);
   font-size: 15.5px;
   line-height: 2;
 }
 
-/* ------------------------------------------------------------ 表紙 */
+.num {
+  font-variant-numeric: tabular-nums;
+}
+
+/* ================================================================= 一覧 */
+
+.listhead {
+  position: sticky;
+  top: 0;
+  z-index: 4;
+  background: color-mix(in srgb, var(--paper) 94%, transparent);
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid var(--rule);
+  padding: calc(env(safe-area-inset-top) + 13px) var(--pad) 10px;
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.listhead__title {
+  font-family: var(--serif);
+  font-size: 20px;
+  letter-spacing: 0.06em;
+}
+
+.listhead__note {
+  margin-left: auto;
+  font-size: 11.5px;
+  color: var(--muted);
+}
+
+.listhead__lede {
+  padding: 11px var(--pad) 1px;
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.75;
+}
+
+.rows {
+  display: flex;
+  flex-direction: column;
+  padding-bottom: 80px;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 13px var(--pad);
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid var(--rule);
+  text-align: left;
+}
+
+.row:active {
+  background: var(--sheet);
+}
+
+.row--closed {
+  opacity: 0.5;
+}
+
+.row__body {
+  flex: 1;
+  min-width: 0;
+}
+
+.row__top {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.row__title {
+  font-size: 15.5px;
+  font-weight: 600;
+}
+
+.row__time {
+  margin-left: auto;
+  font-size: 10.5px;
+  color: var(--faint);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.row__preview {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 1px;
+}
+
+.row__text {
+  font-size: 13px;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.row__badge {
+  flex: none;
+  margin-left: auto;
+  min-width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  background: var(--warn);
+  color: #fff;
+  font-family: var(--mono);
+  font-size: 10px;
+  line-height: 18px;
+  text-align: center;
+  padding: 0 5px;
+}
+
+.chip-state {
+  flex: none;
+  font-family: var(--mono);
+  font-size: 9.5px;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+  border: 1px solid var(--rule-strong);
+  border-radius: 999px;
+  padding: 1px 7px;
+  white-space: nowrap;
+}
+
+.chip-state--ready {
+  color: #fff;
+  border-color: var(--proxy);
+  background: var(--proxy);
+}
+
+.chip-state--closed {
+  color: var(--faint);
+}
+
+.empty {
+  padding: 48px 20px;
+  text-align: center;
+  color: var(--muted);
+  font-family: var(--serif);
+  font-size: 14.5px;
+  line-height: 2;
+}
+
+/* ================================================================= 会話 */
+
+.chat {
+  display: flex;
+  flex-direction: column;
+  min-height: 100dvh;
+}
+
+.chathead {
+  position: sticky;
+  top: 0;
+  z-index: 4;
+  background: color-mix(in srgb, var(--paper) 94%, transparent);
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid var(--rule);
+  padding: calc(env(safe-area-inset-top) + 10px) 12px 8px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.chathead__back {
+  background: none;
+  border: none;
+  font-size: 22px;
+  line-height: 1;
+  color: var(--ink);
+  padding: 2px 4px 2px 0;
+}
+
+.chathead__title {
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.chathead__sub {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.chathead__right {
+  margin-left: auto;
+}
+
+.closeness {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 9px 14px 10px;
+  border-bottom: 1px solid var(--rule);
+  background: var(--sheet);
+}
+
+.closeness__bar {
+  height: 3px;
+  background: var(--rule);
+  display: flex;
+}
+
+.closeness__proxy {
+  height: 100%;
+  background: var(--proxy);
+}
+
+.closeness__mine {
+  height: 100%;
+  background: var(--ink);
+}
+
+.closeness__lost {
+  height: 100%;
+  background: repeating-linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--warn) 45%, transparent),
+    color-mix(in srgb, var(--warn) 45%, transparent) 3px,
+    transparent 3px,
+    transparent 6px
+  );
+}
+
+.closeness__row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 10.5px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.stream {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  padding: 14px var(--pad) 20px;
+}
+
+.daystamp {
+  align-self: center;
+  font-family: var(--mono);
+  font-size: 9.5px;
+  letter-spacing: 0.12em;
+  color: var(--muted);
+  background: var(--sheet);
+  border: 1px solid var(--rule);
+  border-radius: 999px;
+  padding: 2px 11px;
+  margin: 7px 0 1px;
+}
+
+.divider {
+  align-self: stretch;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 16px 0 6px;
+  font-size: 11.5px;
+  color: var(--ink);
+  font-family: var(--serif);
+}
+
+.divider::before,
+.divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--rule-strong);
+}
+
+.silence {
+  align-self: center;
+  font-family: var(--serif);
+  font-size: 12px;
+  color: var(--proxy);
+  margin: 3px 0;
+}
+
+.bubblerow {
+  display: flex;
+  align-items: flex-end;
+  gap: 6px;
+  max-width: 86%;
+}
+
+.bubblerow--right {
+  align-self: flex-end;
+  flex-direction: row-reverse;
+}
+
+.bubblerow--left {
+  align-self: flex-start;
+}
+
+.bubble {
+  border-radius: 16px;
+  padding: 9px 13px;
+  font-size: 15px;
+  line-height: 1.7;
+  white-space: pre-wrap;
+  word-break: break-word;
+  background: #fff;
+  border: 1px solid var(--rule);
+}
+
+.bubblerow--left .bubble {
+  border-top-left-radius: 5px;
+}
+
+.bubblerow--right .bubble {
+  border-top-right-radius: 5px;
+  background: #e7e2d6;
+  border-color: #dcd5c6;
+}
+
+/*
+ * 代理人が書いたもの。
+ *
+ * 自分の側は茶で塗り、相手の側は白のまま左に茶の罫を立てる。両方塗ると
+ * 左右の区別が消えて、誰の発言か追えなくなった（実際に読めなくなった）。
+ * 「代理人が書いた」ことは色と罫で、「どちらの代理人か」は左右で示す。
+ */
+.bubblerow--right .bubble--agent {
+  background: var(--proxy-soft);
+  border-color: color-mix(in srgb, var(--proxy) 32%, var(--rule));
+}
+
+.bubblerow--left .bubble--agent {
+  background: #fff;
+  border-color: var(--rule);
+  border-left: 3px solid var(--proxy);
+  padding-left: 11px;
+}
+
+.bubble__meta {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  flex: none;
+}
+
+.bubble__time {
+  font-size: 10px;
+  color: var(--faint);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.agentmark {
+  font-family: var(--mono);
+  font-size: 8.5px;
+  letter-spacing: 0.06em;
+  color: var(--proxy);
+  border: 1px solid var(--proxy);
+  border-radius: 3px;
+  padding: 0 3px;
+}
+
+.fabnote {
+  align-self: flex-end;
+  font-size: 11px;
+  color: var(--warn);
+  max-width: 86%;
+  margin-top: -5px;
+}
+
+.streamnote {
+  align-self: center;
+  font-size: 12.5px;
+  color: var(--muted);
+  font-family: var(--serif);
+  padding: 24px 12px;
+  text-align: center;
+  line-height: 2;
+}
+
+/* ================================================================= 入力 */
+
+.composer {
+  position: sticky;
+  bottom: 0;
+  z-index: 4;
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  padding: 9px 12px calc(env(safe-area-inset-bottom) + 9px);
+  background: color-mix(in srgb, var(--paper) 96%, transparent);
+  backdrop-filter: blur(10px);
+  border-top: 1px solid var(--rule);
+}
+
+.composer__input {
+  flex: 1;
+  min-height: 38px;
+  max-height: 120px;
+  padding: 9px 13px;
+  background: #fff;
+  border: 1px solid var(--rule-strong);
+  border-radius: 19px;
+  outline: none;
+  resize: none;
+  font-size: 15px;
+  line-height: 1.5;
+}
+
+.composer__input:focus {
+  border-color: var(--ink);
+}
+
+.iconbtn {
+  flex: none;
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  border: 1px solid var(--ink);
+  background: var(--ink);
+  color: var(--paper);
+  font-size: 15px;
+  display: grid;
+  place-items: center;
+}
+
+.iconbtn:disabled {
+  opacity: 0.3;
+}
+
+.iconbtn--agent {
+  background: transparent;
+  border-color: var(--proxy);
+  color: var(--proxy);
+  font-family: var(--serif);
+  font-size: 15px;
+}
+
+.agentbar {
+  position: sticky;
+  bottom: 0;
+  z-index: 4;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px var(--pad) calc(env(safe-area-inset-bottom) + 12px);
+  background: color-mix(in srgb, var(--paper) 96%, transparent);
+  backdrop-filter: blur(10px);
+  border-top: 1px solid var(--rule);
+}
+
+.agentbar__text {
+  flex: 1;
+  font-size: 12.5px;
+  color: var(--muted);
+  line-height: 1.65;
+}
+
+.agentbar__btn {
+  flex: none;
+  padding: 10px 16px;
+  border-radius: 999px;
+  border: 1px solid var(--proxy);
+  background: var(--proxy);
+  color: #fff;
+  font-size: 13.5px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+/* ================================================================= タブ */
+
+.tabbar {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 6;
+  display: flex;
+  max-width: var(--measure);
+  margin: 0 auto;
+  background: color-mix(in srgb, var(--paper) 95%, transparent);
+  backdrop-filter: blur(10px);
+  border-top: 1px solid var(--rule-strong);
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+.tab {
+  position: relative;
+  flex: 1;
+  background: none;
+  border: none;
+  padding: 9px 4px 10px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  color: var(--faint);
+  font-size: 10.5px;
+}
+
+.tab--on {
+  color: var(--ink);
+}
+
+.tab__mark {
+  font-size: 17px;
+  line-height: 1.15;
+}
+
+.tab__dot {
+  position: absolute;
+  top: 6px;
+  left: 50%;
+  margin-left: 7px;
+  min-width: 15px;
+  height: 15px;
+  border-radius: 999px;
+  background: var(--warn);
+  color: #fff;
+  font-family: var(--mono);
+  font-size: 9px;
+  line-height: 15px;
+  padding: 0 4px;
+}
+
+/* ================================================================= 覆い */
+
+.sheet {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  background: var(--paper);
+  overflow-y: auto;
+}
+
+.sheet__inner {
+  max-width: var(--measure);
+  margin: 0 auto;
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+}
+
+.sheet__head {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: color-mix(in srgb, var(--paper) 94%, transparent);
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid var(--rule-strong);
+  padding: calc(env(safe-area-inset-top) + 11px) var(--pad) 9px;
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.sheet__title {
+  font-family: var(--serif);
+  font-size: 16px;
+  letter-spacing: 0.08em;
+}
+
+.sheet__no {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--muted);
+}
+
+.sheet__close {
+  margin-left: auto;
+  background: none;
+  border: none;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.pad {
+  padding: 16px var(--pad) 44px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+/* ================================================================= 書類 */
 
 .cover {
   border: 1px solid var(--rule-strong);
   border-radius: var(--radius);
   background: var(--sheet);
-  padding: 22px 18px;
+  padding: 20px 17px;
   display: flex;
   flex-direction: column;
   gap: 14px;
@@ -166,15 +712,14 @@ p {
 
 .cover__title {
   font-family: var(--serif);
-  font-size: 27px;
-  letter-spacing: 0.12em;
-  line-height: 1.4;
+  font-size: 25px;
+  letter-spacing: 0.1em;
+  line-height: 1.5;
 }
 
 .cover__rows {
   display: flex;
   flex-direction: column;
-  gap: 0;
   border-top: 1px solid var(--rule);
 }
 
@@ -187,7 +732,7 @@ p {
 }
 
 .kv__key {
-  width: 116px;
+  width: 128px;
   flex: none;
   color: var(--muted);
   font-size: 12px;
@@ -221,8 +766,6 @@ p {
   letter-spacing: 0.1em;
 }
 
-/* ------------------------------------------------------------ 節 */
-
 .section {
   display: flex;
   flex-direction: column;
@@ -249,8 +792,6 @@ p {
   letter-spacing: 0.08em;
 }
 
-/* ------------------------------------------------------- 相手のカード */
-
 .person {
   border: 1px solid var(--rule);
   border-radius: var(--radius);
@@ -265,24 +806,6 @@ p {
   display: flex;
   align-items: center;
   gap: 10px;
-}
-
-.avatar {
-  width: 34px;
-  height: 34px;
-  flex: none;
-  display: grid;
-  place-items: center;
-  border-radius: 50%;
-  font-size: 14px;
-  font-weight: 600;
-  color: #fff;
-}
-
-.avatar--sm {
-  width: 24px;
-  height: 24px;
-  font-size: 11px;
 }
 
 .person__name {
@@ -305,31 +828,6 @@ p {
   font-weight: 400;
 }
 
-.meter {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.meter__bar {
-  height: 3px;
-  background: var(--rule);
-}
-
-.meter__fill {
-  height: 100%;
-  background: var(--ink);
-  transition: width 600ms ease-out;
-}
-
-.meter__row {
-  display: flex;
-  justify-content: space-between;
-  font-size: 11.5px;
-  color: var(--muted);
-  font-variant-numeric: tabular-nums;
-}
-
 .field {
   display: flex;
   flex-direction: column;
@@ -339,41 +837,12 @@ p {
 .field__key {
   font-size: 11px;
   color: var(--muted);
-  letter-spacing: 0.04em;
 }
 
 .field__value {
   font-family: var(--serif);
   font-size: 14.5px;
   line-height: 1.85;
-}
-
-.chiplist {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-
-.chip {
-  border: 1px solid var(--rule-strong);
-  border-radius: 999px;
-  padding: 2px 9px;
-  font-size: 12px;
-  color: var(--ink-dim);
-}
-
-/* 代理人が作ったものに付く印。ここだけ茶で通す */
-.mark-proxy {
-  display: inline-block;
-  font-family: var(--mono);
-  font-size: 9px;
-  letter-spacing: 0.1em;
-  color: var(--proxy);
-  border: 1px solid var(--proxy);
-  border-radius: 2px;
-  padding: 0 4px;
-  margin-right: 6px;
-  vertical-align: 2px;
 }
 
 .beliefs {
@@ -386,11 +855,23 @@ p {
   font-family: var(--serif);
   font-size: 14.5px;
   line-height: 1.8;
-  padding-left: 2px;
 }
 
 .belief--fabricated {
   color: var(--proxy);
+}
+
+.mark-proxy {
+  display: inline-block;
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  color: var(--proxy);
+  border: 1px solid var(--proxy);
+  border-radius: 2px;
+  padding: 0 4px;
+  margin-right: 6px;
+  vertical-align: 2px;
 }
 
 .leak {
@@ -423,466 +904,74 @@ p {
   padding-top: 3px;
 }
 
-/* ------------------------------------------------ 代理人同士のやり取り */
+.plans {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
 
-/*
- * この作品の主役。**面積をいちばん多く取る。**
- * こちらの代理人の発言は茶、相手の代理人の発言は墨。作り話の注記は朱。
- * 吹き出しにしない（会話アプリの顔になると、書類の中の抜粋に見えなくなる）。
- */
-.log {
+.plan {
   border: 1px solid var(--rule);
   border-radius: var(--radius);
   background: var(--sheet);
-  padding: 4px 0;
-  /* 交流中の画面は中央揃えなので、ここで左揃えに戻す */
-  text-align: left;
-}
-
-.log__day {
-  font-family: var(--mono);
-  font-size: 10px;
-  letter-spacing: 0.12em;
-  color: var(--muted);
-  padding: 10px 13px 2px;
-  border-top: 1px solid var(--rule);
-}
-
-.log > div:first-child .log__day {
-  border-top: none;
-}
-
-.log__silence {
-  font-size: 12px;
-  color: var(--proxy);
-  padding: 10px 13px 2px;
-  font-family: var(--serif);
-}
-
-.log__more {
-  font-size: 12px;
-  color: var(--faint);
-  padding: 10px 13px;
-  text-align: center;
-  font-family: var(--mono);
-  letter-spacing: 0.08em;
-}
-
-.turn {
-  padding: 4px 13px 8px;
-}
-
-.turn__who {
-  display: block;
-  font-family: var(--mono);
-  font-size: 9.5px;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  margin-bottom: 1px;
-}
-
-.turn--yours .turn__who {
-  color: var(--proxy);
-}
-
-.turn--theirs .turn__who {
-  color: var(--ink-dim);
-}
-
-.turn__text {
-  font-family: var(--serif);
-  font-size: 15px;
-  line-height: 1.85;
-}
-
-.turn--yours .turn__text {
-  padding-left: 10px;
-  border-left: 2px solid var(--proxy);
-}
-
-.turn--theirs .turn__text {
-  padding-left: 10px;
-  border-left: 2px solid var(--rule-strong);
-}
-
-.turn__note {
-  font-size: 11.5px;
-  color: var(--warn);
-  padding-left: 12px;
-  margin-top: 2px;
-}
-
-/* ------------------------------------------------------------ 代理人中 */
-
-.proxy {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  gap: 20px;
-  text-align: center;
-}
-
-.proxy__day {
-  font-family: var(--mono);
-  font-size: 54px;
-  line-height: 1;
-  font-variant-numeric: tabular-nums;
-  letter-spacing: -0.02em;
-}
-
-.proxy__of {
-  font-size: 13px;
-  color: var(--muted);
-}
-
-.proxy__line {
-  font-family: var(--serif);
-  font-size: 15px;
-  min-height: 3em;
-  color: var(--ink-dim);
-}
-
-.sealed {
-  border: 1px dashed var(--rule-strong);
-  border-radius: var(--radius);
-  padding: 28px 18px;
-  font-family: var(--serif);
-  color: var(--muted);
-}
-
-/* ------------------------------------------------------------ 連絡 */
-
-.message {
-  border: 1px solid var(--rule);
-  border-radius: var(--radius);
-  background: var(--sheet);
-  padding: 12px 13px;
-  display: flex;
-  flex-direction: column;
-  gap: 9px;
-}
-
-.message__head {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-}
-
-.message__name {
-  font-size: 13.5px;
-  font-weight: 600;
-}
-
-.message__day {
-  margin-left: auto;
-  font-family: var(--mono);
-  font-size: 10.5px;
-  color: var(--faint);
-}
-
-.message__body {
-  font-family: var(--serif);
-  font-size: 15px;
-  line-height: 1.85;
-}
-
-.quiz {
-  display: flex;
-  flex-direction: column;
-  gap: 7px;
-  border-top: 1px solid var(--rule);
-  padding-top: 10px;
-}
-
-.quiz__prompt {
-  font-size: 13px;
-  color: var(--ink-dim);
-}
-
-.choice {
-  text-align: left;
-  border: 1px solid var(--rule-strong);
-  border-radius: var(--radius);
-  background: transparent;
-  padding: 9px 11px;
-  font-family: var(--serif);
-  font-size: 14px;
-  line-height: 1.7;
-}
-
-.choice--right {
-  border-color: var(--ink);
-}
-
-.choice--wrong {
-  border-color: var(--warn);
-  color: var(--warn);
-}
-
-.verdict {
+  padding: 11px 13px;
   font-family: var(--serif);
   font-size: 14.5px;
-}
-
-.verdict--wrong {
-  color: var(--warn);
-}
-
-/* ------------------------------------------------------------ 約束 */
-
-.pledge {
-  border: 1px solid var(--rule);
-  border-radius: var(--radius);
-  background: var(--sheet);
-  padding: 13px;
-  display: flex;
-  flex-direction: column;
-  gap: 9px;
-}
-
-.pledge--overdue {
-  border-color: var(--warn);
-}
-
-.pledge__due {
-  font-family: var(--mono);
-  font-size: 11px;
-  letter-spacing: 0.08em;
-  color: var(--muted);
-}
-
-.pledge__due--overdue {
-  color: var(--warn);
-}
-
-.pledge__body {
-  font-family: var(--serif);
-  font-size: 15px;
   line-height: 1.8;
 }
 
-.pledge__state {
-  font-family: var(--mono);
-  font-size: 10.5px;
-  letter-spacing: 0.1em;
-  color: var(--muted);
-}
-
-/* ------------------------------------------------------------ 押す物 */
-
-.btn {
-  width: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  padding: 14px 16px;
-  border: 1px solid var(--ink);
+.notice {
+  border: 1px solid var(--warn);
   border-radius: var(--radius);
-  background: var(--ink);
-  color: var(--paper);
-  font-size: 15px;
-  font-weight: 600;
-}
-
-.btn:active {
-  transform: translateY(1px);
-}
-
-.btn--ghost {
-  background: transparent;
-  color: var(--ink);
-  border-color: var(--rule-strong);
-  font-weight: 500;
-}
-
-.btn--quiet {
-  background: transparent;
-  border-color: transparent;
-  color: var(--muted);
-  font-weight: 500;
-  padding: 11px;
-}
-
-.btn--warn {
-  background: var(--warn);
-  border-color: var(--warn);
-  color: #fff;
-}
-
-.btn:disabled {
-  opacity: 0.35;
-  cursor: default;
-}
-
-.btn__hint {
-  font-family: var(--mono);
-  font-size: 9.5px;
-  letter-spacing: 0.12em;
-  opacity: 0.7;
-}
-
-.actions {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-/* ------------------------------------------------------------ 入力 */
-
-.input,
-.textarea {
-  width: 100%;
-  padding: 11px 12px;
-  background: var(--sheet);
-  border: 1px solid var(--rule-strong);
-  border-radius: var(--radius);
-  outline: none;
-}
-
-.input:focus,
-.textarea:focus {
-  border-color: var(--ink);
-}
-
-.textarea {
-  min-height: 64px;
-  resize: vertical;
-}
-
-.choices {
-  display: flex;
-  gap: 8px;
-}
-
-.opt {
-  flex: 1;
-  border: 1px solid var(--rule-strong);
-  border-radius: var(--radius);
-  background: transparent;
-  padding: 10px 6px;
-  text-align: center;
-  font-size: 13.5px;
-  color: var(--ink-dim);
-}
-
-.opt--on {
-  background: var(--ink);
-  border-color: var(--ink);
-  color: var(--paper);
-}
-
-.toggle {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  width: 100%;
-  border: 1px solid var(--rule-strong);
-  border-radius: var(--radius);
-  background: var(--sheet);
-  padding: 12px 13px;
-  text-align: left;
-}
-
-.toggle__state {
-  font-family: var(--mono);
-  font-size: 10.5px;
-  letter-spacing: 0.1em;
-  color: var(--muted);
-  white-space: nowrap;
-}
-
-.terms {
-  border-top: 1px solid var(--rule);
-  border-bottom: 1px solid var(--rule);
-  padding: 12px 0;
-  display: flex;
-  flex-direction: column;
-  gap: 7px;
-}
-
-.empty {
-  padding: 40px 12px;
-  text-align: center;
-  color: var(--muted);
-  font-family: var(--serif);
-  font-size: 14.5px;
-}
-
-/* ------------------------------------------------------------ タブ */
-
-.tabbar {
-  position: fixed;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  z-index: 5;
-  display: flex;
-  max-width: var(--measure);
-  margin: 0 auto;
-  background: color-mix(in srgb, var(--paper) 94%, transparent);
-  backdrop-filter: blur(8px);
-  border-top: 1px solid var(--rule-strong);
-  padding-bottom: env(safe-area-inset-bottom);
-}
-
-.tab {
-  flex: 1;
-  background: none;
-  border: none;
-  padding: 11px 4px 12px;
-  color: var(--faint);
-  font-family: var(--serif);
+  background: color-mix(in srgb, var(--warn) 8%, transparent);
+  padding: 11px 13px;
+  color: var(--warn);
   font-size: 13px;
-  letter-spacing: 0.08em;
+  line-height: 1.75;
 }
 
-.tab--on {
-  color: var(--ink);
-}
-
-.tab__badge {
-  display: inline-block;
-  min-width: 16px;
-  margin-left: 4px;
-  border-radius: 999px;
-  background: var(--warn);
-  color: #fff;
-  font-family: var(--mono);
-  font-size: 9.5px;
-  line-height: 16px;
-  vertical-align: 1px;
-}
-
-/* ------------------------------------------------------------ 入口 */
-
-.enter {
-  flex: 1;
+.meter {
   display: flex;
   flex-direction: column;
-  justify-content: center;
-  gap: 16px;
-  padding: 32px var(--pad) calc(env(safe-area-inset-bottom) + 24px);
-  max-width: 420px;
-  margin: 0 auto;
-  width: 100%;
+  gap: 4px;
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .meter__fill {
-    transition: none;
-  }
+.meter__bar {
+  height: 3px;
+  background: var(--rule);
+  display: flex;
 }
 
-/* ------------------------------------------------------- 期間の帯 */
+.meter__proxy {
+  height: 100%;
+  background: var(--proxy);
+}
 
-/*
- * 帯・点表・年表・環——この四つで「関係は他人が数週間から数か月かけて築き、
- * あなたはその後ろの短い区間を受け取った」を、文章を読まずに見えるようにする。
- * 色の規則は本文と同じ。**茶が代理人、墨があなた、朱が失ったぶん。**
- */
+.meter__mine {
+  height: 100%;
+  background: var(--ink);
+}
+
+.meter__lost {
+  height: 100%;
+  background: repeating-linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--warn) 40%, transparent),
+    color-mix(in srgb, var(--warn) 40%, transparent) 3px,
+    transparent 3px,
+    transparent 6px
+  );
+}
+
+.meter__row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11.5px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ============================================================== 図 */
 
 .ribbon {
   display: flex;
@@ -893,7 +982,7 @@ p {
 .ribbon__track {
   display: flex;
   align-items: stretch;
-  height: 30px;
+  height: 28px;
   border: 1px solid var(--rule-strong);
   border-radius: var(--radius);
   overflow: hidden;
@@ -916,7 +1005,6 @@ p {
   height: 100%;
   background: var(--proxy);
   opacity: 0.85;
-  transition: width 400ms linear;
 }
 
 .ribbon__seam {
@@ -935,7 +1023,6 @@ p {
   height: 100%;
   background: var(--ink);
   opacity: 0.9;
-  transition: width 400ms linear;
 }
 
 .ribbon__caption {
@@ -968,8 +1055,6 @@ p {
   letter-spacing: 0.12em;
 }
 
-/* ------------------------------------------------------- 日の点表 */
-
 .daygrid {
   display: flex;
   flex-wrap: wrap;
@@ -993,12 +1078,6 @@ p {
   background: var(--proxy);
   border-color: var(--proxy);
 }
-
-.daygrid__dot--mark {
-  box-shadow: 0 0 0 2px var(--paper), 0 0 0 3px var(--ink);
-}
-
-/* ------------------------------------------------------- 関係の年表 */
 
 .chart {
   margin: 0;
@@ -1088,7 +1167,7 @@ p {
   background: var(--ink);
 }
 
-/* ------------------------------------------------------- 顔の環 */
+/* ============================================================== 顔 */
 
 .avatar {
   position: relative;
@@ -1127,37 +1206,18 @@ p {
   border-radius: 50%;
   color: #fff;
   font-weight: 600;
-  width: 68%;
-  height: 68%;
+  width: 100%;
+  height: 100%;
+  font-size: 15px;
+}
+
+.avatar--ringed .avatar__face {
+  width: 70%;
+  height: 70%;
   font-size: 12px;
 }
 
-.avatar--sm .avatar__face {
-  font-size: 10px;
-}
-
-/* 親密度の棒。代理人が築いたぶん・あなたが足したぶん・失ったぶんを塗り分ける */
-.meter__bar {
-  display: flex;
-}
-
-.meter__proxy {
-  height: 100%;
-  background: var(--proxy);
-}
-
-.meter__lost {
-  height: 100%;
-  background: repeating-linear-gradient(
-    135deg,
-    color-mix(in srgb, var(--warn) 35%, transparent),
-    color-mix(in srgb, var(--warn) 35%, transparent) 3px,
-    transparent 3px,
-    transparent 6px
-  );
-}
-
-/* ------------------------------------------------------------ 判断 */
+/* ============================================================== 判断 */
 
 .decisions {
   display: flex;
@@ -1178,7 +1238,7 @@ p {
 
 .decision--on {
   border-color: var(--ink);
-  background: var(--paper);
+  background: #fff;
 }
 
 .decision__title {
@@ -1191,77 +1251,6 @@ p {
   color: var(--muted);
   line-height: 1.7;
 }
-
-/* --------------------------------------------------------- 人格の寄せ方 */
-
-.slider {
-  -webkit-appearance: none;
-  appearance: none;
-  width: 100%;
-  height: 3px;
-  background: linear-gradient(to right, var(--ink), var(--proxy));
-  outline: none;
-}
-
-.slider::-webkit-slider-thumb {
-  -webkit-appearance: none;
-  appearance: none;
-  width: 20px;
-  height: 20px;
-  border-radius: 50%;
-  background: var(--sheet);
-  border: 1.5px solid var(--ink);
-}
-
-.slider__ends {
-  display: flex;
-  justify-content: space-between;
-  font-size: 11.5px;
-  color: var(--muted);
-}
-
-.slider__ends .num {
-  font-family: var(--mono);
-  color: var(--ink);
-  font-variant-numeric: tabular-nums;
-}
-
-/* ------------------------------------------------------------ 相手の状態 */
-
-.statusbar {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  border: 1px solid var(--rule);
-  border-radius: var(--radius);
-  background: var(--sheet);
-  padding: 9px 12px;
-}
-
-.statusbar__name {
-  font-family: var(--serif);
-  font-size: 15px;
-}
-
-.statusbar__state {
-  margin-left: auto;
-  font-family: var(--mono);
-  font-size: 11px;
-  color: var(--muted);
-  font-variant-numeric: tabular-nums;
-}
-
-.tag-agent {
-  font-family: var(--mono);
-  font-size: 9px;
-  letter-spacing: 0.1em;
-  color: var(--proxy);
-  border: 1px solid var(--proxy);
-  border-radius: 2px;
-  padding: 0 4px;
-}
-
-/* ------------------------------------------------------------ 開示 */
 
 .reveal {
   display: flex;
@@ -1292,11 +1281,147 @@ p {
   margin-bottom: 4px;
 }
 
-.replyrow {
+/* ============================================================== 押す物 */
+
+.btn {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 14px 16px;
+  border: 1px solid var(--ink);
+  border-radius: var(--radius);
+  background: var(--ink);
+  color: var(--paper);
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.btn:active {
+  transform: translateY(1px);
+}
+
+.btn--ghost {
+  background: transparent;
+  color: var(--ink);
+  border-color: var(--rule-strong);
+  font-weight: 500;
+}
+
+.btn--quiet {
+  background: transparent;
+  border-color: transparent;
+  color: var(--muted);
+  font-weight: 500;
+  padding: 11px;
+}
+
+.btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.btn__hint {
+  font-family: var(--mono);
+  font-size: 9.5px;
+  letter-spacing: 0.12em;
+  opacity: 0.7;
+}
+
+.actions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* ============================================================== 入口 */
+
+.enter {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 16px;
+  padding: 32px var(--pad) calc(env(safe-area-inset-bottom) + 24px);
+  max-width: 430px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+.input {
+  width: 100%;
+  padding: 11px 12px;
+  background: #fff;
+  border: 1px solid var(--rule-strong);
+  border-radius: var(--radius);
+  outline: none;
+}
+
+.input:focus {
+  border-color: var(--ink);
+}
+
+.slider {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 3px;
+  background: linear-gradient(to right, var(--ink), var(--proxy));
+  outline: none;
+}
+
+.slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--sheet);
+  border: 1.5px solid var(--ink);
+}
+
+.slider__ends {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11.5px;
+  color: var(--muted);
+}
+
+.slider__ends .num {
+  font-family: var(--mono);
+  color: var(--ink);
+}
+
+.choices {
   display: flex;
   gap: 8px;
+}
+
+.opt {
+  flex: 1;
+  border: 1px solid var(--rule-strong);
+  border-radius: var(--radius);
+  background: transparent;
+  padding: 10px 6px;
+  text-align: center;
+  font-size: 13.5px;
+  color: var(--ink-dim);
+}
+
+.opt--on {
+  background: var(--ink);
+  border-color: var(--ink);
+  color: var(--paper);
+}
+
+.terms {
   border-top: 1px solid var(--rule);
-  padding-top: 10px;
+  border-bottom: 1px solid var(--rule);
+  padding: 12px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
 }
 
 @media (prefers-reduced-motion: reduce) {

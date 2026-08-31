@@ -1,27 +1,40 @@
-export type Tab = 'contacts' | 'handover' | 'pledges' | 'settings';
+export type Tab = 'mine' | 'proxy' | 'settings';
 
-const TABS: readonly { id: Tab; name: string }[] = [
-  { id: 'contacts', name: '連絡' },
-  { id: 'handover', name: '引継書' },
-  { id: 'pledges', name: '約束' },
-  { id: 'settings', name: '設定' },
+const TABS: readonly { id: Tab; mark: string; name: string }[] = [
+  { id: 'mine', mark: '☰', name: 'トーク' },
+  { id: 'proxy', mark: '⧉', name: '代理' },
+  { id: 'settings', mark: '⚙', name: '設定' },
 ];
 
-export function TabBar({ current, onChange, unread }: { current: Tab; onChange: (tab: Tab) => void; unread: number }) {
+export function TabBar({
+  current,
+  onChange,
+  badges,
+}: {
+  current: Tab;
+  onChange: (tab: Tab) => void;
+  badges: Partial<Record<Tab, number>>;
+}) {
   return (
     <nav className="tabbar">
-      {TABS.map((tab) => (
-        <button
-          key={tab.id}
-          type="button"
-          className={`tab${tab.id === current ? ' tab--on' : ''}`}
-          aria-current={tab.id === current}
-          onClick={() => onChange(tab.id)}
-        >
-          {tab.name}
-          {tab.id === 'contacts' && unread > 0 ? <span className="tab__badge">{unread}</span> : null}
-        </button>
-      ))}
+      {TABS.map((tab) => {
+        const badge = badges[tab.id] ?? 0;
+        return (
+          <button
+            key={tab.id}
+            type="button"
+            className={`tab${tab.id === current ? ' tab--on' : ''}`}
+            aria-current={tab.id === current}
+            onClick={() => onChange(tab.id)}
+          >
+            <span className="tab__mark" aria-hidden="true">
+              {tab.mark}
+            </span>
+            {tab.name}
+            {badge > 0 ? <span className="tab__dot">{badge > 99 ? '99+' : badge}</span> : null}
+          </button>
+        );
+      })}
     </nav>
   );
 }
