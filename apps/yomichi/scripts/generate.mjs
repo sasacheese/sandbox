@@ -203,7 +203,15 @@ function apply(output) {
   const handles = new Set(residents.map((r) => r.handle));
   const known = (handle) => (handles.has(handle) ? handle : residents[Math.floor(Math.random() * residents.length)].handle);
 
-  if (output.gathering) {
+  /*
+   * 頼んでいない集まりは受け取らない。
+   *
+   * プロンプトで求めていなくてもモデルは gathering を返してくることがあり、
+   * 実際に予定が二重に立った。予定表が埋まっていくと、この場所は「行くか
+   * 行かないかを選ぶ場所」になってしまう。予定は常に多くて 1 件に保つ。
+   */
+  const alreadyPlanned = feed.gatherings.some((g) => g.status === 'upcoming');
+  if (output.gathering && wantGathering && !alreadyPlanned) {
     const gathering = {
       id: nextId('g'),
       title: String(output.gathering.title ?? '歩く').slice(0, 24),
