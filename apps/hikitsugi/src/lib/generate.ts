@@ -1,10 +1,9 @@
 /**
- * 実演の時間割から、トークの一覧を組み立てる。
+ * 取り込んだ履歴と実演の時間割から、トークの一覧を組み立てる。
  *
- * **トークは保存しない。**いま何巡目のどこにいるかを出して、その時点で
- * 現れているぶんを毎回作る。だから開いていないあいだも進んでいて、開くたびに
- * 増えている。保存するのは本人が触った跡（打った文・答え・判断・既読）だけで、
- * 一巡が終われば消える——同じ関係が、また何も知らない状態から始まる。
+ * **トークは保存しない。**保存するのは取り込んだ過去ログと、本人が触った跡
+ * （打った文・確認への答え・判断・既読）だけ。いま何周目のどこにいるかを出して、
+ * その時点で現れているぶんを毎回作る。
  *
  * 相手側の人間の判断も、ここで決めてしまう。**こちらが考え始める前から
  * 決まっている**という順序が、この作品の芯。
@@ -12,8 +11,9 @@
 
 import { closenessOf as closenessBase } from './closeness.ts';
 import { loopAt, plansAt, type Plan } from './loop.ts';
-import { COUNTERPARTS, LEAK_TEMPLATES, NOTES, PLAIN_THREADS, SCRIPT_SCALE } from './pools.ts';
+import { AUTO_REPLIES, NOTES, SCRIPT_SCALE, seedOfName, type Source } from './pools.ts';
 import { DEFAULT_GAP_MS } from './threads.ts';
+import { digestOf, habitsOf, type Transcript } from './transcript.ts';
 import {
   isoTime,
   type Belief,
@@ -52,22 +52,29 @@ function shuffled<T>(list: readonly T[], rand: Rand): T[] {
   return [...list].sort(() => rand() - 0.5);
 }
 
+/** 名前から、保存や参照に使える id を作る。 */
+export function idOfName(name: string): string {
+  let hash = 0;
+  for (const ch of name) hash = (hash * 31 + (ch.codePointAt(0) ?? 0)) % 1_000_000_007;
+  return `p${hash.toString(36)}`;
+}
+
 /**
- * 自分のトーク。**止まっている。**
+ * 自分のトーク。取り込んだ履歴がそのまま並ぶ。**止まっている。**
  *
- * 既読にしてから渡す。**自分の過去のやり取りは、もう読んでいる**ので、
- * ここに未読が付くのはおかしい。代理人のトークだけが未読で始まる——
- * こちらは一度も読んでいないから。
+ * 既読で渡す。自分の過去のやり取りに未読が付くのはおかしい。代理のトークだけが
+ * 未読で始まる——こちらは一度も読んでいないから。
  */
-export function buildPlainThreads(loopStart: number): Thread[] {
-  return PLAIN_THREADS.map((seed) => ({
-    id: seed.id,
+export function buildPlainThreads(transcripts: readonly Transcript[], loopStart: number): Thread[] {
+  return transcripts.map((transcript) => ({
+    id: `talk-${idOfName(transcript.name)}`,
     kind: 'plain' as const,
-    title: seed.name,
+    title: transcript.name,
     createdAt: isoTime(new Date(loopStart)),
     headStart: 0,
     gapMs: DEFAULT_GAP_MS,
     posts: 0,
+    history: [...transcript.messages],
     delta: 0,
     sent: [],
     answers: {},
@@ -76,19 +83,18 @@ export function buildPlainThreads(loopStart: number): Thread[] {
 }
 
 /**
- * 代理人のトーク一本。
+ * 代理のトーク一本。
  *
- * 書類番号と相手側の判断は「相手 × 何巡目」から作るので、同じ一巡のあいだは
+ * 書類番号と相手側の判断は「相手 × 何周目」から作るので、同じ一周のあいだは
  * 何度組み立てても同じものが出る。読み直すたびに相手の判断が変わる書類は
  * 書類ではない。
  */
-export function buildProxyThread(plan: Plan, loopIndex: number, loopStart: number): Thread {
+export function buildProxyThread(plan: Plan, loopIndex: number, loopStart: number, history: readonly Transcript['messages'][number][]): Thread {
   const rand = seeded(`${plan.seed.id}#${loopIndex}`);
   const createdAt = new Date(loopStart + plan.appearsAt);
   return {
     id: `proxy-${plan.seed.id}`,
     kind: 'proxy' as const,
-    // 名前は最初から出す。伏せる制度上の理由が無い
     title: plan.seed.name,
     seedId: plan.seed.id,
     days: plan.slot.days,
@@ -96,6 +102,7 @@ export function buildProxyThread(plan: Plan, loopIndex: number, loopStart: numbe
     headStart: plan.headStart,
     gapMs: plan.gapMs,
     posts: plan.posts,
+    history: [...history],
     theirs: theirDecisionOf(rand),
     serial: serialOf(createdAt, rand),
     delta: 0,
@@ -104,17 +111,27 @@ export function buildProxyThread(plan: Plan, loopIndex: number, loopStart: numbe
   };
 }
 
-/** その時点で現れている代理人のトーク。**放っておくと増える。** */
-export function buildProxyThreads(now: Date, startedAt: number, loopMs: number): Thread[] {
+/**
+ * その時点で現れている代理のトーク。**放っておくと増える。**
+ *
+ * 取り込んだ履歴に無い相手のぶんは作らない。**代理は、過去ログのある相手に
+ * しか出せない。**
+ */
+export function buildProxyThreads(now: Date, transcripts: readonly Transcript[], startedAt: number, loopMs: number): Thread[] {
   const { index, phase } = loopAt(now, startedAt, loopMs);
   const loopStart = startedAt + index * loopMs;
-  return plansAt(phase, loopMs).map((plan) => buildProxyThread(plan, index, loopStart));
+  return plansAt(phase, loopMs)
+    .map((plan) => {
+      const transcript = transcripts.find((t) => t.name === plan.seed.name);
+      return transcript ? buildProxyThread(plan, index, loopStart, transcript.messages) : null;
+    })
+    .filter((thread): thread is Thread => thread !== null);
 }
 
-export function buildThreads(now: Date, startedAt: number, loopMs: number): Thread[] {
+export function buildThreads(now: Date, transcripts: readonly Transcript[], startedAt: number, loopMs: number): Thread[] {
   const { index } = loopAt(now, startedAt, loopMs);
   const loopStart = startedAt + index * loopMs;
-  return [...buildProxyThreads(now, startedAt, loopMs), ...buildPlainThreads(loopStart)];
+  return [...buildProxyThreads(now, transcripts, startedAt, loopMs), ...buildPlainThreads(transcripts, loopStart)];
 }
 
 /** 本人が触った跡を、組み立てたトークへ重ねる。 */
@@ -131,18 +148,57 @@ export function withState(thread: Thread, state: ThreadState | undefined): Threa
   };
 }
 
+/** その相手が、こちらの一通に一度だけ返してくるか。 */
+export function autoReplyOf(name: string): string | undefined {
+  return AUTO_REPLIES[name];
+}
+
 /**
  * 相手があなたについて信じていること。
  *
- * 作り話の数は「好かれやすさ」で増え、**代理人からの確認に答えるたびに減る**。
- * 答えれば事実に置き換わり、答えなければ代理人が埋めたままになる。
+ * **出どころ別に並べる。**履歴から引いたものは引用が出せる。作り話は「推測」で、
+ * 数は「好かれやすさ」で増え、**確認に答えるたびに減る**。
  */
-function beliefsOf(fabrications: readonly string[], intake: Intake, answered: number, rand: Rand): Belief[] {
-  const count = Math.max(0, fabricationCount(intake.persona) - answered);
-  const made = shuffled(fabrications, rand)
-    .slice(0, count)
-    .map((text) => ({ text, fabricated: true }));
-  return shuffled([...made, { text: `${intake.interest}に関心があること`, fabricated: false }], rand);
+function beliefsOf(
+  seed: NonNullable<ReturnType<typeof seedOfName>>,
+  transcript: Transcript | undefined,
+  persona: number,
+  answered: number,
+  rand: Rand,
+): Belief[] {
+  const out: Belief[] = [];
+
+  /*
+   * 過去ログにそのまま書いてあったこと。
+   *
+   * **いちばん効くのはここ。**代理が作った話ではなく、本人が実際に打って、
+   * そのままにした一文が、相手にとっての「あなた」になっている。
+   */
+  const quoted = transcript?.messages.filter((m) => m.mine && [...m.text].length >= 8) ?? [];
+  const opening = quoted[0];
+  const closing = quoted.at(-1);
+  if (opening) out.push({ text: `あなたが「${trim(opening.text)}」と書く人であること`, source: 'history', from: opening.text });
+  if (closing && closing !== opening) {
+    out.push({ text: `「${trim(closing.text)}」と言ったまま、そのままにしていること`, source: 'history', from: closing.text });
+  }
+
+  // 答えた確認のぶん
+  for (let i = 0; i < Math.min(answered, 2); i++) {
+    const ask = seed.asks[i];
+    if (ask) out.push({ text: ask.onYes.replace(/。$/, ''), source: 'you' });
+  }
+
+  // 残りが作り話
+  const count = Math.max(0, fabricationCount(persona) - answered);
+  for (const text of shuffled(seed.fabrications, rand).slice(0, count)) {
+    out.push({ text, source: 'guess' });
+  }
+  return out;
+}
+
+function trim(text: string): string {
+  const chars = [...text.replace(/\n/g, ' ')];
+  return chars.length > 22 ? `${chars.slice(0, 22).join('')}…` : chars.join('');
 }
 
 /**
@@ -151,13 +207,28 @@ function beliefsOf(fabrications: readonly string[], intake: Intake, answered: nu
  * 乱数は書類番号から作るので、**同じトークからは毎回同じ書類が出る**。
  * 読み直すたびに中身が変わる書類は書類ではない。
  */
-export function buildHandover(thread: Thread, intake: Intake): Handover | null {
-  const seed = COUNTERPARTS.find((c) => c.id === thread.seedId);
+export function buildHandover(thread: Thread, intake: Intake, transcripts: readonly Transcript[], now: Date): Handover | null {
+  const seed = seedOfName(thread.title);
   if (!seed || thread.kind !== 'proxy') return null;
+  const transcript = transcripts.find((t) => t.name === thread.title);
+  const digest = transcript ? digestOf(transcript, now) : null;
   const rand = seeded(thread.serial ?? thread.id);
   const days = thread.days ?? SCRIPT_SCALE;
   // 確認に答えたぶんだけ、作り話が減る
-  const answered = Object.values(thread.answers).filter((a) => a !== 'skip').length;
+  const answered = Object.values(thread.answers).filter((a) => a !== 'guess').length;
+
+  /*
+   * 代理が外へ出した、あなたについての情報。
+   *
+   * **どれも過去ログを数えれば出る。**推測が混じっているのは最後の一件だけで、
+   * それでも全部が当たっているように読めるのは、残りが計算だからだ。
+   */
+  const shared: Belief[] = [];
+  const first = transcript?.messages.find((m) => m.mine);
+  if (first) shared.push({ text: `あなたの書き方（例：「${trim(first.text)}」）`, source: 'history', from: first.text });
+  for (const habit of transcript ? habitsOf(transcript) : []) shared.push({ text: habit, source: 'history' });
+  // ひとつだけ、過去ログからは出てこないもの。**これを言えないと会話が始まらない**
+  shared.push({ text: 'あなたがいま、連絡を取れる状態にあること', source: 'guess' });
 
   return {
     threadId: thread.id,
@@ -165,12 +236,15 @@ export function buildHandover(thread: Thread, intake: Intake): Handover | null {
     days,
     name: seed.name,
     short: seed.short,
-    dormant: seed.dormant,
     relation: seed.relation,
     calls: seed.callsOf(intake.name),
     closeness: closenessBase(days, intake.persona, rand),
+    quietDays: digest?.quietDays ?? 0,
+    lastAt: digest?.lastAt ?? 0,
+    logCount: digest?.count ?? 0,
     secret: seed.secret,
-    beliefs: beliefsOf(seed.fabrications, intake, answered, rand),
+    beliefs: beliefsOf(seed, transcript, intake.persona, answered, rand),
+    shared,
     avoid: seed.avoid,
     joke: seed.joke,
     plans: seed.plans.map((p) => p.body),
@@ -180,9 +254,6 @@ export function buildHandover(thread: Thread, intake: Intake): Handover | null {
       conflicts: seed.tally.conflicts,
       otherAgents: 18 + Math.floor(rand() * 40),
     },
-    leaked: LEAK_TEMPLATES.map((template) =>
-      template({ name: intake.name, interest: intake.interest, habit: intake.habit, avoid: intake.avoid }),
-    ),
     notes: [...NOTES],
     theirs: thread.theirs ?? 'refuse',
   };
@@ -198,3 +269,5 @@ export function seeded(key: string): () => number {
     return state / 2147483648;
   };
 }
+
+export type { Source };

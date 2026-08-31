@@ -12,6 +12,9 @@
  * 引き継ぐと proxy が plain の側へ移る——**タブの移動が引き継ぎそのもの**。
  */
 
+import type { Message } from './transcript.ts';
+import type { Source } from './pools.ts';
+
 declare const brand: unique symbol;
 type Brand<T, B extends string> = T & { readonly [brand]: B };
 
@@ -21,19 +24,28 @@ export function isoTime(at: Date): IsoTime {
   return at.toISOString() as IsoTime;
 }
 
+/**
+ * 本人について、アプリが持っているもの。
+ *
+ * **訊いて書かせるのは一つだけ**（代理の性格）。名前も、相手も、接点も、
+ * 取り込んだ履歴から出る。書き出しの中にもう書いてあるものを、もう一度
+ * 入力させる必要はない。
+ */
 export type Intake = {
+  /** 履歴の中の、自分の表示名。 */
   name: string;
-  interest: string;
-  habit: string;
-  avoid: string;
-  /** 代理人の寄せ方。0 が本人らしさ、100 が好かれやすさ。 */
+  /** 代理の性格。0 が本人に近い、100 が好かれやすい。 */
   persona: number;
+  /** 代理応答をオンにした時刻。実演の一周はここから数える。 */
   startedAt: IsoTime;
 };
 
+/** 相手があなたについて信じていること。**出どころが付く。** */
 export type Belief = {
   text: string;
-  fabricated: boolean;
+  source: Source;
+  /** 出どころが履歴のとき、引いた一通。 */
+  from?: string;
 };
 
 /** 相手側の人間の判断。引き継ぎを申し出た時点でもう決まっている。 */
@@ -60,8 +72,19 @@ export type Bubble = {
   at: IsoTime;
   /** 日付の区切り。前の一通と変わったときだけ表示する。 */
   dayLabel: string;
-  /** 代理人が書いたもの。 */
+  /** 代理が書いたもの。 */
   byAgent: boolean;
+  /**
+   * 代理の発言の出どころ。
+   *
+   * **「なぜか知っている」を無くすための札。**画面では既定で隠してあり、
+   * 見出しを押すと全部に出る。
+   */
+  source?: Source;
+  /** 出どころが履歴のとき、引いた一通。 */
+  from?: string;
+  /** 吹き出しではなく、真ん中に出る告知（開示など）。 */
+  system?: string;
   /** この発言は事実に基づかない、という注記を付ける。 */
   fabricated?: boolean;
   /** 何日か間が空いたことを示す。 */
@@ -74,10 +97,11 @@ export type Bubble = {
    * 答えなければ代理人が勝手に埋める（そのとき、同じ文が作り話になる）。
    * **同じ一文が、答えたかどうかで事実にも嘘にもなる**のがこの作りの要点。
    */
-  ask?: { id: string; text: string; answered?: AskAnswer; autoFilled?: boolean };
+  ask?: { id: string; text: string; gap?: string; answered?: AskAnswer; autoFilled?: boolean };
 };
 
-export type AskAnswer = 'yes' | 'no' | 'skip';
+/** 確認への答え。`guess` は「代理にまかせる」——作り話になる。 */
+export type AskAnswer = 'yes' | 'no' | 'guess';
 
 export type ThreadKind = 'plain' | 'proxy';
 
@@ -88,6 +112,12 @@ export type Thread = {
   title: string;
   /** proxy のときだけ。lib/pools.ts の相手の id。 */
   seedId?: string;
+  /**
+   * 取り込んだ過去ログ。
+   *
+   * **代理が知っていることの全部。**最後の一通より後のことは誰も教えていない。
+   */
+  history: Message[];
   /** proxy のときだけ。交流期間（日）。 */
   days?: number;
   /** 一覧に現れた時刻。ここから一通ずつ等間隔に届く。 */
@@ -141,17 +171,23 @@ export type Handover = {
   days: number;
   name: string;
   short: string;
-  dormant: string;
   relation: string;
   calls: string;
   closeness: number;
+  /** 本人同士が連絡していない日数。**取り込んだ履歴から計算する。** */
+  quietDays: number;
+  /** 代理が知っている最後の日。ここより後のことは知らない。 */
+  lastAt: number;
+  /** 代理が読んだ通数。 */
+  logCount: number;
   secret: string;
   beliefs: Belief[];
+  /** 代理が外へ出した、あなたについての情報。 */
+  shared: Belief[];
   avoid: string;
   joke: { phrase: string; meaning: string };
   plans: string[];
   tally: { messages: number; secrets: number; conflicts: number; otherAgents: number };
-  leaked: string[];
   notes: string[];
   theirs: TheirDecision;
 };

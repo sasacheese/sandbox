@@ -1,6 +1,6 @@
-import { closenessLabel, listTime } from '../lib/format.ts';
+import { closenessLabel, listTime, quietLabel } from '../lib/format.ts';
 import { effectiveCloseness } from '../lib/closeness.ts';
-import { bubblesOf, daysSinceInherit, isLive, isReady, pendingAsksOf, previewOf, storyDay, unreadOf } from '../lib/threads.ts';
+import { bubblesOf, daysSinceInherit, isLive, isReady, pendingAsksOf, previewOf, quietDaysOf, storyDay, unreadOf } from '../lib/threads.ts';
 import type { Thread } from '../lib/types.ts';
 import { useStore } from '../store.tsx';
 import { Avatar } from './Avatar.tsx';
@@ -90,7 +90,7 @@ function Row({ thread, onOpen }: { thread: Thread; onOpen: (threadId: string) =>
         </div>
         <div className="row__preview row__preview--state">
           <State thread={thread} closeness={current} />
-          {handover && !thread.decision ? <span className="row__dormant">連絡なし {handover.dormant}</span> : null}
+          {!thread.decision ? <span className="row__dormant">連絡なし {quietLabel(quietDaysOf(thread, now))}</span> : null}
           {pending > 0 ? <span className="chip-state chip-state--ask">確認 {pending}</span> : null}
         </div>
       </div>

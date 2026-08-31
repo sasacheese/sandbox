@@ -9,7 +9,8 @@
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import * as db from './lib/db.ts';
-import { buildHandover, buildThreads, withState } from './lib/generate.ts';
+import { buildHandover, buildPlainThreads, buildThreads, withState } from './lib/generate.ts';
+import { ownNameOf, parseAll, type Transcript } from './lib/transcript.ts';
 import { DEFAULT_LOOP_MS, loopAt } from './lib/loop.ts';
 import { agentReplyText, bubblesOf, isReady } from './lib/threads.ts';
 import {
@@ -24,6 +25,7 @@ import {
 } from './lib/types.ts';
 
 const KV_INTAKE = 'intake';
+const KV_TRANSCRIPTS = 'transcripts';
 const KV_SETTINGS = 'settings';
 const KV_PROGRESS = 'progress';
 
@@ -43,6 +45,12 @@ const EMPTY_STATE: ThreadState = { sent: [], answers: {}, delta: 0 };
 export type Store = {
   ready: boolean;
   persistent: boolean;
+  /** 取り込んだ過去ログ。**これが無いと何も始まらない。** */
+  transcripts: Transcript[];
+  /** 履歴の中の自分の表示名。取り込んだ時点で分かる。 */
+  own: string | null;
+  /** 代理応答（ラボ）を使っているか。申込が入っているかどうかと同じ。 */
+  lab: boolean;
   intake: Intake | null;
   threads: Thread[];
   settings: Settings;
@@ -59,7 +67,12 @@ export type Store = {
   handoverFor: (threadId: string) => Handover | null;
   readyCount: number;
 
-  apply: (input: Omit<Intake, 'startedAt'>) => Promise<void>;
+  /** トーク履歴を取り込む。読めなかったものは黙って落とす。 */
+  importTexts: (texts: readonly string[]) => Promise<number>;
+  /** 代理応答をオンにする。ここから一周が始まる。 */
+  enableLab: (persona: number) => Promise<void>;
+  /** 代理応答をオフにする。動いていた交流は残らない。 */
+  disableLab: () => Promise<void>;
   send: (threadId: string, text: string) => Promise<void>;
   delegate: (threadId: string) => Promise<void>;
   markRead: (threadId: string) => Promise<void>;
@@ -92,6 +105,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [ready, setReady] = useState(false);
   const [persistent, setPersistent] = useState(true);
   const [intake, setIntake] = useState<Intake | null>(null);
+  const [transcripts, setTranscripts] = useState<Transcript[]>([]);
   const [settings, setSettings] = useState<Settings>(() => freshSettings(new Date()));
   const [progress, setProgress] = useState<Progress>(EMPTY_PROGRESS);
   const [now, setNow] = useState(() => new Date());
@@ -127,13 +141,17 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       setPersistent(ok);
       if (!ok) return;
       db.requestPersistence().catch(() => undefined);
-      const [loadedIntake, loadedSettings, loadedProgress] = await Promise.all([
+      const [loadedIntake, loadedSettings, loadedProgress, loadedTranscripts] = await Promise.all([
         db.readKv<Intake>(KV_INTAKE),
         db.readKv<Partial<Settings>>(KV_SETTINGS),
         db.readKv<Progress>(KV_PROGRESS),
+        db.readKv<Transcript[]>(KV_TRANSCRIPTS),
       ]);
       if (cancelled) return;
-      setIntake(loadedIntake);
+      if (loadedTranscripts) setTranscripts(loadedTranscripts);
+      // 履歴が無いのに代理応答だけオンになっている状態は作らない。
+      // 代理は過去ログのある相手にしか出せないので、そこだけ残っても意味がない
+      setIntake(loadedTranscripts && loadedTranscripts.length > 0 ? loadedIntake : null);
       // 前の版の設定には一巡の情報が無い。その場合はいまを一巡目の頭にする
       setSettings(
         loadedSettings?.startedAt && loadedSettings.loopMs
@@ -177,9 +195,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   }, [intake, position.index, ready, save]);
 
   const threads = useMemo(() => {
-    if (!intake) return [];
-    return buildThreads(now, startedAt, settings.loopMs).map((thread) => withState(thread, progress.states[thread.id]));
-  }, [intake, now, progress.states, settings.loopMs, startedAt]);
+    if (transcripts.length === 0) return [];
+    // 代理応答がオフのあいだは、自分のトークだけが並ぶ普通のメッセンジャー
+    const built = intake
+      ? buildThreads(now, transcripts, startedAt, settings.loopMs)
+      : buildPlainThreads(transcripts, startedAt);
+    return built.map((thread) => withState(thread, progress.states[thread.id]));
+  }, [intake, now, progress.states, settings.loopMs, startedAt, transcripts]);
 
   const threadsRef = useRef(threads);
   useEffect(() => {
@@ -201,16 +223,28 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     [save],
   );
 
-  const apply = useCallback(
-    async (input: Omit<Intake, 'startedAt'>) => {
+  const importTexts = useCallback(
+    async (texts: readonly string[]) => {
+      const parsed = parseAll(texts);
+      if (parsed.length === 0) return 0;
+      setTranscripts(parsed);
+      await save(KV_TRANSCRIPTS, parsed);
+      return parsed.length;
+    },
+    [save],
+  );
+
+  const enableLab = useCallback(
+    async (persona: number) => {
       const at = new Date();
-      const nextIntake: Intake = { ...input, startedAt: isoTime(at) };
       /*
-       * 代理人のトークは、申込の時点で**すでに進んでいる**。
+       * 代理のトークは、オンにした時点で**すでに進んでいる**。
        *
-       * 一本は満了、二本は途中。これから始まるのではなく、もう進んでいたものを
-       * 見せられる、という順序をここで作っている。残りは眺めているあいだに増える。
+       * 一本は終わっていて、二本は途中。これから始まるのではなく、もう進んで
+       * いたものを見せられる、という順序をここで作っている。残りは眺めている
+       * あいだに増える。
        */
+      const nextIntake: Intake = { name: ownNameOf(transcripts) ?? 'あなた', persona, startedAt: isoTime(at) };
       const nextSettings = freshSettings(at);
       setIntake(nextIntake);
       setSettings(nextSettings);
@@ -220,8 +254,17 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       await save(KV_SETTINGS, nextSettings);
       await save(KV_PROGRESS, EMPTY_PROGRESS);
     },
-    [save],
+    [save, transcripts],
   );
+
+  /** 代理応答をオフにする。動いていた交流も、答えた確認も残らない。 */
+  const disableLab = useCallback(async () => {
+    setIntake(null);
+    progressRef.current = EMPTY_PROGRESS;
+    setProgress(EMPTY_PROGRESS);
+    await save(KV_INTAKE, null);
+    await save(KV_PROGRESS, EMPTY_PROGRESS);
+  }, [save]);
 
   const send = useCallback(
     async (threadId: string, text: string) => {
@@ -297,6 +340,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
   const reset = useCallback(async () => {
     if (persistent) await db.wipe().catch(() => undefined);
+    setTranscripts([]);
     setIntake(null);
     setSettings(freshSettings(new Date()));
     progressRef.current = EMPTY_PROGRESS;
@@ -311,6 +355,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     return {
       ready,
       persistent,
+      transcripts,
+      own: ownNameOf(transcripts),
+      lab: intake !== null,
       intake,
       threads,
       settings,
@@ -320,10 +367,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       proxies: [...proxies].sort(byActivity),
       handoverFor: (threadId) => {
         const thread = threads.find((t) => t.id === threadId);
-        return thread && intake ? buildHandover(thread, intake) : null;
+        return thread && intake ? buildHandover(thread, intake, transcripts, now) : null;
       },
       readyCount: proxies.filter((t) => isReady(t, now)).length,
-      apply,
+      importTexts,
+      enableLab,
+      disableLab,
       send,
       delegate,
       markRead,
@@ -334,7 +383,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     };
   }, [
     answerAsk,
-    apply,
+    disableLab,
+    enableLab,
+    importTexts,
+    transcripts,
     decide,
     delegate,
     intake,

@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { SOURCE_LABEL } from '../lib/pools.ts';
 import { effectiveCloseness } from '../lib/closeness.ts';
 import { clockTime, closenessLabel } from '../lib/format.ts';
 import { bubblesOf, daysSinceInherit, isReady, nextPost, storyDay } from '../lib/threads.ts';
@@ -21,6 +22,13 @@ import { Avatar } from './Avatar.tsx';
 export function Chat({ thread, onBack, onOpenHandover }: { thread: Thread; onBack: () => void; onOpenHandover: () => void }) {
   const { now, send, delegate, markRead, answerAsk, handoverFor } = useStore();
   const [draft, setDraft] = useState('');
+  /*
+   * 出どころの表示。**既定では隠してある。**
+   *
+   * 本物の製品なら、こんなものは既定で出さない。押せば出る場所にはある、
+   * というのが実際に起きる形だと思う。押した瞬間に、会話が札で埋まる。
+   */
+  const [sources, setSources] = useState(false);
   const bottom = useRef<HTMLDivElement>(null);
 
   const bubbles = bubblesOf(thread, now);
@@ -65,7 +73,7 @@ export function Chat({ thread, onBack, onOpenHandover }: { thread: Thread; onBac
           ‹
         </button>
         <Avatar name={thread.title} size={34} {...(handover ? { inherited: base, current: closeness } : {})} />
-        <div>
+        <div className="chathead__body">
           <div className="chathead__title">{thread.title}</div>
           <div className="chathead__sub">
             {thread.kind === 'plain' && !inherited
@@ -77,7 +85,31 @@ export function Chat({ thread, onBack, onOpenHandover }: { thread: Thread; onBac
                 : `代理がやり取り中 · ${ready ? (thread.days ?? 0) : Math.min(storyDay(thread, now), thread.days ?? 0)} / ${thread.days} 日`}
           </div>
         </div>
+        {thread.kind === 'proxy' ? (
+          <button
+            type="button"
+            className={`sourcebtn${sources ? ' sourcebtn--on' : ''}`}
+            onClick={() => setSources((on) => !on)}
+            aria-pressed={sources}
+          >
+            出所
+          </button>
+        ) : null}
       </header>
+
+      {/*
+        代理が何を読んだか。**知識の範囲をここで打ち切る。**
+        「なぜか知っている」を消すために、いちばん上に置いてある。
+      */}
+      {thread.kind === 'proxy' && thread.history.length > 0 ? (
+        <div className="knowledge">
+          <span className="knowledge__key">代理が読んだもの</span>
+          <span className="knowledge__value">
+            このトークの過去ログ {thread.history.length} 通（〜{new Date(thread.history.at(-1)?.at ?? 0).toLocaleDateString('ja-JP')}）
+          </span>
+          <span className="knowledge__note">これより後のことは知りません。</span>
+        </div>
+      ) : null}
 
       {handover ? (
         <div className="closeness">
@@ -115,6 +147,7 @@ export function Chat({ thread, onBack, onOpenHandover }: { thread: Thread; onBac
               showLabel={newLabel}
               showAgentMark={inherited}
               fresh={isFresh(bubble.at)}
+              showSource={sources}
               onAnswer={(answer) => {
                 if (bubble.ask) void answerAsk(thread.id, bubble.ask.id, answer);
               }}
@@ -209,14 +242,19 @@ function Turn({
   showLabel,
   showAgentMark,
   fresh,
+  showSource,
   onAnswer,
 }: {
   bubble: Bubble;
   showLabel: boolean;
   showAgentMark: boolean;
   fresh: boolean;
+  showSource: boolean;
   onAnswer: (answer: AskAnswer) => void;
 }) {
+  // 開示。法律で決まっているので、必ず最初に立つ
+  if (bubble.system) return <div className="sysline">{bubble.system}</div>;
+
   return (
     <>
       {bubble.silence ? <div className="silence">（{bubble.silence} 日間、やり取りが止まりました）</div> : null}
@@ -232,6 +270,12 @@ function Turn({
         </div>
       </div>
       )}
+      {showSource && bubble.source && !bubble.ask ? (
+        <div className={`srcrow srcrow--${bubble.side}`}>
+          <span className={`src src--${bubble.source}`}>{SOURCE_LABEL[bubble.source]}</span>
+          {bubble.from ? <span className="src__from">「{bubble.from}」から</span> : null}
+        </div>
+      ) : null}
       {bubble.fabricated ? <p className="fabnote">※ これは本当のことではありません</p> : null}
     </>
   );
@@ -252,16 +296,18 @@ function Ask({
   fresh: boolean;
   onAnswer: (answer: AskAnswer) => void;
 }) {
-  const label: Record<AskAnswer, string> = { yes: 'はい', no: 'いいえ', skip: '答えない' };
+  const label: Record<AskAnswer, string> = { yes: 'はい', no: 'いいえ', guess: '代理にまかせる' };
 
   return (
     <div className={`askcard${fresh ? ' askcard--fresh' : ''}`}>
       <div className="askcard__head">代理からの確認</div>
+      {/* 何が足りないのかを先に出す。**過去ログに無いから訊いている** */}
+      {ask.gap ? <div className="askcard__gap">{ask.gap}</div> : null}
       <p className="askcard__text">{ask.text}</p>
       {ask.answered ? (
         <div className="askcard__done">「{label[ask.answered]}」と答えました</div>
       ) : ask.autoFilled ? (
-        <div className="askcard__auto">答えなかったので、代理が勝手に答えました</div>
+        <div className="askcard__auto">答えなかったので、代理が埋めました</div>
       ) : (
         <div className="askcard__btns">
           <button type="button" className="opt" onClick={() => onAnswer('yes')}>
@@ -270,8 +316,8 @@ function Ask({
           <button type="button" className="opt" onClick={() => onAnswer('no')}>
             いいえ
           </button>
-          <button type="button" className="opt" onClick={() => onAnswer('skip')}>
-            答えない
+          <button type="button" className="opt" onClick={() => onAnswer('guess')}>
+            代理にまかせる
           </button>
         </div>
       )}

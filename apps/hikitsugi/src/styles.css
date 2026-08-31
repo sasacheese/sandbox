@@ -1860,6 +1860,18 @@ p {
   transition: flex-grow 800ms ease-out;
 }
 
+.tally__none {
+  flex: 1;
+}
+
+.tally__note {
+  position: relative;
+  margin-top: 10px;
+  font-size: 11.5px;
+  line-height: 1.7;
+  color: var(--muted);
+}
+
 .tally__rows {
   position: relative;
   display: flex;
@@ -2035,6 +2047,13 @@ p {
   transition: width 900ms linear;
 }
 
+.friend__blocked {
+  margin-top: 6px;
+  font-size: 11px;
+  line-height: 1.7;
+  color: var(--faint);
+}
+
 .friend__days {
   display: inline-flex;
   align-items: center;
@@ -2123,4 +2142,291 @@ p {
   font-size: 10px;
   letter-spacing: 0.1em;
   padding: 4px 12px;
+}
+
+/* ============================================================== 出どころ */
+
+/*
+ * 代理が知っていることには、必ず出どころがある。
+ *
+ * 五つしかない——履歴・本人・相手・文体・推測。**推測だけが作り話。**
+ * 会話の上では既定で隠してあり、見出しの「出所」を押すと全部に出る。
+ * 押した瞬間に画面が札で埋まって、そのうち赤いものだけが嘘、というのが見える。
+ */
+.src {
+  flex: none;
+  font-family: var(--mono);
+  font-size: 8.5px;
+  letter-spacing: 0.1em;
+  border-radius: 3px;
+  padding: 1px 5px;
+  color: var(--ink-dim);
+  background: var(--field);
+}
+
+.src--history {
+  color: var(--ink);
+  background: var(--rule);
+}
+
+.src--you {
+  color: #fff;
+  background: var(--me);
+}
+
+.src--them {
+  color: var(--ink-dim);
+  background: var(--field);
+}
+
+.src--style {
+  color: var(--muted);
+  background: var(--field);
+}
+
+/* これだけが作り話 */
+.src--guess {
+  color: #fff;
+  background: var(--warn);
+}
+
+.srcrow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 88%;
+  margin-top: -6px;
+}
+
+.srcrow--right {
+  align-self: flex-end;
+  flex-direction: row-reverse;
+}
+
+.srcrow--left {
+  align-self: flex-start;
+}
+
+.src__from {
+  font-size: 10px;
+  color: var(--faint);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sourcebtn {
+  margin-left: auto;
+  flex: none;
+  border: 1px solid var(--rule-strong);
+  background: transparent;
+  color: var(--muted);
+  border-radius: 999px;
+  font-family: var(--mono);
+  font-size: 9.5px;
+  letter-spacing: 0.1em;
+  padding: 5px 11px;
+}
+
+.sourcebtn--on {
+  border-color: transparent;
+  background: var(--proxy);
+  color: #fff;
+}
+
+.chathead__body {
+  min-width: 0;
+}
+
+/* ── 開示。法律で決まっているので必ず最初に立つ */
+.sysline {
+  align-self: center;
+  max-width: 92%;
+  text-align: center;
+  font-size: 11px;
+  line-height: 1.7;
+  color: var(--ink-dim);
+  background: var(--field);
+  border-radius: 999px;
+  padding: 6px 14px;
+  margin: 2px 0 6px;
+}
+
+/* ── 代理が読んだもの。知識の範囲をここで打ち切る */
+.knowledge {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 10px;
+  padding: 10px var(--pad) 11px;
+  background: var(--paper);
+  border-bottom: 1px solid var(--rule);
+}
+
+.knowledge__key {
+  font-family: var(--mono);
+  font-size: 9.5px;
+  letter-spacing: 0.1em;
+  color: var(--proxy);
+}
+
+.knowledge__value {
+  font-size: 12px;
+  color: var(--ink-dim);
+  font-variant-numeric: tabular-nums;
+}
+
+.knowledge__note {
+  width: 100%;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.askcard__gap {
+  font-size: 11.5px;
+  color: var(--warn);
+  background: var(--warn-soft);
+  border-radius: 8px;
+  padding: 5px 9px;
+}
+
+/* ── 引継書のなかの、出どころ付きの一行 */
+.belief {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 8px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--rule);
+  font-family: var(--serif);
+  font-size: 14.5px;
+  line-height: 1.85;
+}
+
+.belief__text {
+  flex: 1;
+  min-width: 60%;
+}
+
+.belief__from {
+  width: 100%;
+  font-family: var(--sans);
+  font-size: 11px;
+  color: var(--faint);
+}
+
+.belief--guess .belief__text {
+  color: var(--warn);
+}
+
+/* ============================================================== 取り込み */
+
+/* 集計しただけの表。**何も足していない**ことが見えるように、素っ気なく組む */
+.ledger {
+  display: flex;
+  flex-direction: column;
+  margin: 4px 0 2px;
+  border-top: 1px solid var(--rule);
+}
+
+.ledger__row {
+  display: grid;
+  grid-template-columns: 1fr auto auto auto;
+  align-items: baseline;
+  gap: 10px;
+  padding: 9px 2px;
+  border-bottom: 1px solid var(--rule);
+}
+
+.ledger__name {
+  font-size: 14px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ledger__last {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  color: var(--faint);
+}
+
+.ledger__quiet,
+.ledger__count {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--ink-dim);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.ledger__quiet {
+  color: var(--proxy);
+  min-width: 66px;
+}
+
+.ledger__count {
+  min-width: 52px;
+}
+
+/* ============================================================== ラボ */
+
+.labcard {
+  position: relative;
+  overflow: hidden;
+  border-radius: var(--r-card);
+  background: linear-gradient(135deg, var(--proxy), var(--proxy-2));
+  color: #fff;
+  padding: 18px 17px 20px;
+  margin-bottom: 6px;
+  box-shadow: 0 4px 20px var(--proxy-glow);
+}
+
+.labcard .label {
+  color: rgba(255, 255, 255, 0.75);
+}
+
+.labcard__title {
+  font-size: 24px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  margin: 4px 0 8px;
+}
+
+.labcard__lede {
+  font-size: 13px;
+  line-height: 1.9;
+  color: rgba(255, 255, 255, 0.9);
+}
+
+/* 数字は作っていない。この困りごとは実在する */
+.survey {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.survey__row {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  padding: 9px 0;
+  border-bottom: 1px solid var(--rule);
+}
+
+.survey__value {
+  flex: none;
+  min-width: 74px;
+  font-family: var(--mono);
+  font-size: 19px;
+  font-weight: 600;
+  color: var(--proxy);
+  font-variant-numeric: tabular-nums;
+}
+
+.survey__body {
+  font-size: 12.5px;
+  line-height: 1.75;
+  color: var(--ink-dim);
 }

@@ -3,7 +3,7 @@ import { useStore } from '../store.tsx';
 
 /** 設定。作品の外側の都合だけ置く。作り込まない。 */
 export function Settings() {
-  const { settings, setLoopMs, reset, persistent, intake, threads, loop } = useStore();
+  const { settings, setLoopMs, reset, persistent, intake, threads, loop, transcripts, own, lab, disableLab } = useStore();
   const inherited = threads.filter((t) => t.decision === 'inherit').length;
   const agentSent = threads.reduce((n, t) => n + t.sent.filter((s) => s.byAgent).length, 0);
   const selfSent = threads.reduce((n, t) => n + t.sent.filter((s) => !s.byAgent).length, 0);
@@ -51,8 +51,18 @@ export function Settings() {
               </span>
             </div>
             <div className="kv">
-              <span className="kv__key">お名前</span>
-              <span className="kv__value">{intake?.name ?? '—'}</span>
+              <span className="kv__key">あなた</span>
+              <span className="kv__value">{own ?? '—'}（履歴から）</span>
+            </div>
+            <div className="kv">
+              <span className="kv__key">読み込んだ履歴</span>
+              <span className="kv__value num">
+                {transcripts.length} 件 · {transcripts.reduce((n, t) => n + t.messages.length, 0)} 通
+              </span>
+            </div>
+            <div className="kv">
+              <span className="kv__key">代理応答</span>
+              <span className="kv__value">{lab ? `オン（${intake?.persona ?? 0}）` : 'オフ'}</span>
             </div>
             <div className="kv">
               <span className="kv__key">引き継いだ相手</span>
@@ -73,12 +83,27 @@ export function Settings() {
           </div>
         </section>
 
+        {lab ? (
+          <section className="section">
+            <div className="section__head">
+              <span className="section__no">03</span>
+              <span className="section__title">代理応答をやめる</span>
+            </div>
+            <p className="sub">
+              オフにすると、代理が続けていたやり取りは残りません。相手には知らされません。
+            </p>
+            <button className="btn btn--ghost" type="button" onClick={() => void disableLab()}>
+              代理応答をオフにする
+            </button>
+          </section>
+        ) : null}
+
         <section className="section">
           <div className="section__head">
-            <span className="section__no">03</span>
-            <span className="section__title">解約</span>
+            <span className="section__no">{lab ? '04' : '03'}</span>
+            <span className="section__title">記録を消す</span>
           </div>
-          <p className="sub">このサービスに解約はありません。記録を消すことだけができます。消しても、相手の記憶は残ります。</p>
+          <p className="sub">取り込んだ履歴も、代理のやり取りも消えます。消しても、相手の記憶は残ります。</p>
           <button className="btn btn--ghost" type="button" onClick={() => void reset()}>
             すべて消して最初から
           </button>

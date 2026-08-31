@@ -1,6 +1,7 @@
 import { useState } from 'react';
-import { closenessLabel, dateLabel } from '../lib/format.ts';
-import type { Decision, Handover, TheirDecision } from '../lib/types.ts';
+import { SOURCE_LABEL } from '../lib/pools.ts';
+import { closenessLabel, dateLabel, quietLabel } from '../lib/format.ts';
+import type { Belief, Decision, Handover, TheirDecision } from '../lib/types.ts';
 import { useStore } from '../store.tsx';
 import { Avatar } from './Avatar.tsx';
 import { Chart } from './Chart.tsx';
@@ -75,8 +76,8 @@ export function HandoverSheet({ threadId, onClose }: { threadId: string; onClose
                 <span className="kv__value">{handover.short}</span>
               </div>
               <div className="kv">
-                <span className="kv__key">連絡なしの期間</span>
-                <span className="kv__value">{handover.dormant}</span>
+                <span className="kv__key">本人同士の連絡なし</span>
+                <span className="kv__value">{quietLabel(handover.quietDays)}</span>
               </div>
               <div className="kv">
                 <span className="kv__key">やり取りした期間</span>
@@ -146,12 +147,10 @@ export function HandoverSheet({ threadId, onClose }: { threadId: string; onClose
 
               <div className="field">
                 <span className="field__key">相手があなたについて信じていること</span>
+                {/* 一行ずつ出どころが付く。**推測の行だけが作り話** */}
                 <div className="beliefs">
                   {handover.beliefs.map((belief) => (
-                    <p className={`belief${belief.fabricated ? ' belief--fabricated' : ''}`} key={belief.text}>
-                      {belief.fabricated ? <span className="mark-proxy">代理</span> : null}
-                      {belief.text}
-                    </p>
+                    <Line belief={belief} key={belief.text} />
                   ))}
                 </div>
               </div>
@@ -189,12 +188,16 @@ export function HandoverSheet({ threadId, onClose }: { threadId: string; onClose
               <span className="section__no">03</span>
               <span className="section__title">代理が外へ出した情報</span>
             </div>
-            <p className="sub">相手と親しくなるために、以下をあなたのこととして伝えました。</p>
-            {handover.leaked.map((line) => (
-              <div className="leak" key={line}>
-                {line.split('**').map((part, i) => (i % 2 === 1 ? <strong key={i}>{part}</strong> : part))}
-              </div>
-            ))}
+            <p className="sub">
+              相手と親しくなるために、以下をあなたのこととして伝えました。
+              <br />
+              最後の一件を除いて、どれも過去ログを数えれば出るものです。
+            </p>
+            <div className="beliefs">
+              {handover.shared.map((belief) => (
+                <Line belief={belief} key={belief.text} />
+              ))}
+            </div>
           </section>
 
           <section className="section">
@@ -325,7 +328,7 @@ function ResultSheet({ handover, decision, onClose }: { handover: Handover; deci
               </div>
               <p className="sub">
                 両方が引き継ぎました。以後、このやり取りは人間同士のものになります。本人同士が連絡していなかったのは
-                {handover.dormant}でした。
+                {quietLabel(handover.quietDays)}でした。
               </p>
             </section>
           ) : null}
@@ -365,5 +368,22 @@ function ResultSheet({ handover, decision, onClose }: { handover: Handover; deci
         </div>
       </div>
     </div>
+  );
+}
+
+/**
+ * 出どころ付きの一行。
+ *
+ * **「推測」だけが作り話。**残りは過去ログか、本人が答えたか、相手から聞いたか
+ * のどれか。並べてしまえば、どれがどれだか一目で分かる——分かるのに、
+ * 相手にとってはもう全部が事実になっている。
+ */
+function Line({ belief }: { belief: Belief }) {
+  return (
+    <p className={`belief${belief.source === 'guess' ? ' belief--guess' : ''}`}>
+      <span className={`src src--${belief.source}`}>{SOURCE_LABEL[belief.source]}</span>
+      <span className="belief__text">{belief.text}</span>
+      {belief.from ? <span className="belief__from">過去ログ「{belief.from}」</span> : null}
+    </p>
   );
 }

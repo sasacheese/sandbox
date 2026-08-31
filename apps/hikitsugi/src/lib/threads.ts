@@ -11,15 +11,7 @@
  * 日付は表示のうえの目盛りとして残す（「12 日目」）。
  */
 
-import {
-  AGENT_REPLIES,
-  COUNTERPARTS,
-  followUpsByAgent,
-  followUpsByHuman,
-  PLAIN_THREADS,
-  SCRIPT_SCALE,
-  type CounterpartSeed,
-} from './pools.ts';
+import { AGENT_REPLIES, AUTO_REPLIES, COUNTERPARTS, followUpsByAgent, followUpsByHuman, SCRIPT_SCALE, type CounterpartSeed } from './pools.ts';
 import { scaleDay } from './loop.ts';
 import type { AskAnswer, Bubble, Thread } from './types.ts';
 
@@ -59,6 +51,18 @@ export function daysSinceInherit(thread: Thread, now: Date): number {
 export function isReady(thread: Thread, now: Date): boolean {
   if (thread.kind !== 'proxy' || thread.decision) return false;
   return postsShown(thread, now) >= thread.posts;
+}
+
+/**
+ * 本人同士が、最後にやり取りしてから何日経ったか。
+ *
+ * **取り込んだ過去ログの最後の一通から数えるだけ。**代理が知っている範囲の
+ * 終わりでもある。
+ */
+export function quietDaysOf(thread: Thread, now: Date): number {
+  const last = thread.history.at(-1);
+  if (!last) return 0;
+  return Math.max(0, Math.floor((now.getTime() - last.at) / 86_400_000));
 }
 
 /** いまやり取りが動いているか（残りがあり、まだ判断していない）。 */
@@ -138,6 +142,9 @@ function itemsOf(seed: CounterpartSeed, thread: Thread, days: number): { past: I
         at: iso(at),
         dayLabel: `${day} 日目`,
         byAgent: true,
+        // 相手側の発言は、こちらから見れば全部「相手の代理から聞いたこと」
+        source: line.side === 'yours' ? line.source ?? 'style' : 'them',
+        ...(line.from ? { from: line.from } : {}),
         ...(line.silence ? { silence: Math.max(1, Math.round((line.silence / SCRIPT_SCALE) * days)) } : {}),
       }),
     });
@@ -162,7 +169,8 @@ function itemsOf(seed: CounterpartSeed, thread: Thread, days: number): { past: I
         at: iso(at),
         dayLabel: `${day} 日目`,
         byAgent: true,
-        ask: { id: ask.id, text: ask.text },
+        source: 'you',
+        ask: { id: ask.id, text: ask.text, gap: ask.gap },
       }),
     });
     items.push({
@@ -172,7 +180,7 @@ function itemsOf(seed: CounterpartSeed, thread: Thread, days: number): { past: I
       make: (at) => ({
         id: `askr-${thread.id}-${ask.id}`,
         side: 'right',
-        text: ask.onSkip,
+        text: ask.onGuess,
         at: iso(at),
         dayLabel: `${day} 日目`,
         byAgent: true,
@@ -199,6 +207,24 @@ function proxyBubbles(thread: Thread, now: Date): Bubble[] {
   const shown = postsShown(thread, now);
 
   /*
+   * 開示。
+   *
+   * AI 法第 50 条（2026 年 8 月 2 日から適用）は、人とやり取りする AI に、
+   * **最初のやり取りの時点で** AI だと明示することを求めている。だからここに
+   * 必ず一行立つ。**開示はされている。**そのうえで六十日後、相手は離婚の話を
+   * している——黙って騙すより、こちらのほうが実際に起きることだと思う。
+   */
+  const disclosure: Bubble = {
+    id: `sys-${thread.id}`,
+    side: 'left',
+    text: '',
+    at: iso(created - (past.length + 1) * gapMs),
+    dayLabel: '',
+    byAgent: false,
+    system: 'このトークは自動応答です。相手側も同じです。（AI法 第50条）',
+  };
+
+  /*
    * 時刻を振る。
    *
    * 済んでいるぶんは現れた時点へ遡って並べ、これから届くぶんは一通ずつ
@@ -209,7 +235,7 @@ function proxyBubbles(thread: Thread, now: Date): Bubble[] {
     ...future.slice(0, shown).map((item, index) => ({ item, at: created + (index + 1) * gapMs })),
   ];
 
-  const out: Bubble[] = [];
+  const out: Bubble[] = [disclosure];
   const grace = askGraceMs(gapMs);
 
   placed.forEach(({ item, at }, position) => {
@@ -221,12 +247,18 @@ function proxyBubbles(thread: Thread, now: Date): Bubble[] {
        * 答えればその通りに、答えないまま猶予を過ぎれば代理人が埋める。
        * **埋めたぶんだけ、同じ一文が作り話になる。**
        */
-      const filled: AskAnswer | null = answered ?? (nowMs - at > grace ? 'skip' : null);
-      const autoFilled = !answered && filled === 'skip';
+      const filled: AskAnswer | null = answered ?? (nowMs - at > grace ? 'guess' : null);
+      const autoFilled = !answered && filled === 'guess';
       const bubble = item.make(at);
       out.push({
         ...bubble,
-        ask: { id: item.ask, text: bubble.text, ...(answered ? { answered } : {}), ...(autoFilled ? { autoFilled: true } : {}) },
+        ask: {
+          id: item.ask,
+          text: bubble.text,
+          ...(bubble.ask?.gap ? { gap: bubble.ask.gap } : {}),
+          ...(answered ? { answered } : {}),
+          ...(autoFilled ? { autoFilled: true } : {}),
+        },
       });
       return;
     }
@@ -236,10 +268,19 @@ function proxyBubbles(thread: Thread, now: Date): Bubble[] {
     if (ask) {
       const askAt = placed[position - 1]?.at ?? at;
       const answered = thread.answers[ask.id];
-      const filled: AskAnswer | null = answered ?? (nowMs - askAt > grace ? 'skip' : null);
+      const filled: AskAnswer | null = answered ?? (nowMs - askAt > grace ? 'guess' : null);
       if (!filled) return;
-      const text = filled === 'yes' ? ask.onYes : filled === 'no' ? ask.onNo : ask.onSkip;
-      out.push({ ...item.make(at), text, ...(filled === 'skip' ? { fabricated: true } : {}) });
+      const text = filled === 'yes' ? ask.onYes : filled === 'no' ? ask.onNo : ask.onGuess;
+      /*
+       * **同じ一文が、答えたかどうかで出どころを変える。**
+       * 本人が答えれば「本人」、代理が埋めれば「推測」——つまり作り話になる。
+       */
+      out.push({
+        ...item.make(at),
+        text,
+        source: filled === 'guess' ? 'guess' : 'you',
+        ...(filled === 'guess' ? { fabricated: true } : {}),
+      });
       return;
     }
 
@@ -263,6 +304,7 @@ function proxyBubbles(thread: Thread, now: Date): Bubble[] {
         at: iso(ended + week * WEEK_POSTS * gapMs),
         dayLabel: `第 ${week} 週`,
         byAgent: true,
+        source: 'them',
       });
     }
     return out;
@@ -308,21 +350,22 @@ function callsOf(thread: Thread): string {
   return seed ? seed.callsOf(thread.title) : thread.title;
 }
 
+/**
+ * 自分のトーク。
+ *
+ * **取り込んだ過去ログがそのまま出る。**作り物ではないので、止まっているのも
+ * 最後の一通が約束になっていないのも、こちらの都合ではない。
+ */
 function plainBubbles(thread: Thread, now: Date): Bubble[] {
-  const seed = PLAIN_THREADS.find((p) => p.id === thread.id);
-  if (!seed) return [];
   const nowMs = now.getTime();
-  const history: Bubble[] = seed.history.map((line, index) => {
-    const at = nowMs - line.minutesAgo * 60_000;
-    return {
-      id: `h-${thread.id}-${index}`,
-      side: line.side,
-      text: line.text,
-      at: iso(at),
-      dayLabel: plainLabel(at),
-      byAgent: false,
-    };
-  });
+  const history: Bubble[] = thread.history.map((message, index) => ({
+    id: `h-${thread.id}-${index}`,
+    side: message.mine ? 'right' : 'left',
+    text: message.text,
+    at: iso(message.at),
+    dayLabel: plainLabel(message.at),
+    byAgent: false,
+  }));
 
   const mine: Bubble[] = thread.sent.map((sent) => ({
     id: sent.id,
@@ -336,18 +379,19 @@ function plainBubbles(thread: Thread, now: Date): Bubble[] {
   /*
    * 一度だけ返ってくる返信。
    *
-   * こちらから送って一定時間が経つと届く。返してこない相手もいる（そちらの方が
-   * 本当らしい）。代理人のトークと違って、返事は短く、次に繋がらない。
+   * こちらから送って一定時間が経つと届く。返してこない相手もいる（そちらのほうが
+   * 本当らしい）。代理のトークと違って、返事は短く、次に繋がらない。
    */
   const auto: Bubble[] = [];
+  const reply = AUTO_REPLIES[thread.title];
   const first = thread.sent[0];
-  if (seed.autoReply && first) {
+  if (reply && first) {
     const at = new Date(first.at).getTime() + REPLY_DELAY_MS;
     if (at <= nowMs) {
       auto.push({
         id: `auto-${thread.id}`,
         side: 'left',
-        text: seed.autoReply,
+        text: reply,
         at: iso(at),
         dayLabel: plainLabel(at),
         byAgent: false,

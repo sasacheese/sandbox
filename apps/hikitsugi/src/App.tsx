@@ -1,10 +1,11 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Chat } from './components/Chat.tsx';
 import { ChatList } from './components/ChatList.tsx';
 import { Friends } from './components/Friends.tsx';
 import { Gate } from './components/Gate.tsx';
 import { HandoverSheet } from './components/HandoverSheet.tsx';
-import { Intake } from './components/Intake.tsx';
+import { Import } from './components/Import.tsx';
+import { Lab } from './components/Lab.tsx';
 import { Settings } from './components/Settings.tsx';
 import { TabBar, type Tab } from './components/TabBar.tsx';
 import { unlocked } from './lib/gate.ts';
@@ -16,6 +17,15 @@ export function App() {
   const store = useStore();
   const [entered, setEntered] = useState(() => unlocked());
   const [tab, setTab] = useState<Tab>('mine');
+  /*
+   * 取り込みの画面を抜けたか。
+   *
+   * 読み込んだ直後に一覧へ飛ばすと、**集計の表を見せないまま先へ進んでしまう**。
+   * あの表がこの作品の入口なので、押されるまで待つ。前回の取り込みが残って
+   * いるときは、もう見ているので飛ばす。
+   */
+  const [past, setPast] = useState(false);
+  const firstLoad = useRef(true);
   const [openId, setOpenId] = useState<string | null>(null);
   const [sheetId, setSheetId] = useState<string | null>(null);
 
@@ -29,10 +39,16 @@ export function App() {
 
   if (!store.ready) return <div className="app" />;
 
-  if (!store.intake) {
+  // 取り込みが済むまでは、まだメッセンジャーですらない
+  if (firstLoad.current) {
+    firstLoad.current = false;
+    if (store.transcripts.length > 0) setPast(true);
+  }
+
+  if (!past) {
     return (
       <div className="app">
-        <Intake />
+        <Import onDone={() => setPast(true)} />
       </div>
     );
   }
@@ -60,7 +76,8 @@ export function App() {
     <div className="app">
       <UpdateBar />
       {tab === 'mine' ? <ChatList kind="mine" onOpen={setOpenId} /> : null}
-      {tab === 'proxy' ? <ChatList kind="proxy" onOpen={setOpenId} /> : null}
+      {/* 代理応答をオンにするまで、このタブは機能の紹介でしかない */}
+      {tab === 'proxy' ? store.lab ? <ChatList kind="proxy" onOpen={setOpenId} /> : <Lab /> : null}
       {tab === 'friends' ? <Friends onOpen={setOpenId} /> : null}
       {tab === 'settings' ? <Settings /> : null}
       <TabBar current={tab} onChange={setTab} badges={{ mine: unread('mine'), proxy: unread('proxy') }} />
