@@ -79,6 +79,33 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
+  /*
+   * 住人の書き込みだけは、まずネットワークへ取りに行く。
+   *
+   * ここはアプリの本体と違って**毎回変わる**もので、キャッシュを優先すると
+   * 版を切り替えるまで流れが止まって見える。取れなければキャッシュに落ちるので、
+   * 圏外でも最後に見た状態は開く。
+   */
+  if (new URL(request.url).pathname.endsWith('/feed.json')) {
+    event.respondWith(
+      (async () => {
+        try {
+          const response = await fetch(request, { cache: 'no-store' });
+          if (response.ok) {
+            const cache = await caches.open(CACHE);
+            cache.put(request, response.clone());
+          }
+          return response;
+        } catch {
+          const cached = await caches.match(request);
+          if (cached) return cached;
+          throw new Error('feed.json を取得できない');
+        }
+      })(),
+    );
+    return;
+  }
+
   event.respondWith(
     (async () => {
       const cached = await caches.match(request);

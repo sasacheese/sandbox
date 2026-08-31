@@ -1,6 +1,7 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { threads, upcoming } from '../lib/feed.ts';
 import { gatheringWhen, since } from '../lib/format.ts';
+import { applyUpdate, subscribeUpdate, updateReady } from '../lib/updates.ts';
 import { useStore } from '../store.tsx';
 import { useNow } from '../useNow.ts';
 import { Composer } from './Composer.tsx';
@@ -15,6 +16,9 @@ import { PostCard } from './PostCard.tsx';
 export function FeedView({ onOpenGatherings }: { onOpenGatherings: () => void }) {
   const { feed, me, posts, replies } = useStore();
   const now = useNow(60_000);
+  const [, bump] = useState(0);
+  // アプリ本体の更新は流れの先頭に出す。設定の奥に置くと押されない
+  useEffect(() => subscribeUpdate(() => bump((n) => n + 1)), []);
   const list = useMemo(
     () => (me ? threads(feed, { handle: me.handle, posts, replies }) : []),
     [feed, me, posts, replies],
@@ -27,6 +31,12 @@ export function FeedView({ onOpenGatherings }: { onOpenGatherings: () => void })
         <span className="header__title">よみち</span>
         <span className="header__sub">最終更新 {since(feed.generatedAt, now)}</span>
       </header>
+
+      {updateReady() ? (
+        <button type="button" className="notice" style={{ textAlign: 'left' }} onClick={applyUpdate}>
+          新しい版があります。押すと読み込み直します。
+        </button>
+      ) : null}
 
       {next ? (
         <button type="button" className="notice" style={{ textAlign: 'left' }} onClick={onOpenGatherings}>

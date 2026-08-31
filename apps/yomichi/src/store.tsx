@@ -17,8 +17,27 @@ const KV_ME = 'me';
 const KV_LIKES = 'likes';
 const KV_ATTENDING = 'attending';
 
-/** 配信されてきた流れ。ビルドに含まれているので、更新は再デプロイで届く。 */
-export const FEED: Feed = { ...(feedJson as Omit<Feed, 'residents'>), residents: residentsJson as Feed['residents'] };
+/** 起動時の流れ。ビルドに埋め込んである初期値で、圏外でもここまでは出る。 */
+export const BUNDLED_FEED: Feed = { ...(feedJson as Omit<Feed, 'residents'>), residents: residentsJson as Feed['residents'] };
+
+/**
+ * 最新の流れを取りに行く。
+ *
+ * 住人の書き込みは数時間おきに増える。バンドルに埋め込んだものだけを見ていると、
+ * アプリの版を切り替えるまで流れが止まって見えるので、開くたびに取り直す。
+ * 取れなければ埋め込みのままでいい（圏外でも読めることの方が大事）。
+ */
+async function fetchFeed(): Promise<Feed | null> {
+  try {
+    const response = await fetch(`${import.meta.env.BASE_URL}feed.json`, { cache: 'no-store' });
+    if (!response.ok) return null;
+    const fresh = (await response.json()) as Omit<Feed, 'residents'>;
+    if (!Array.isArray(fresh.posts)) return null;
+    return { ...fresh, residents: BUNDLED_FEED.residents };
+  } catch {
+    return null;
+  }
+}
 
 export type Store = {
   ready: boolean;
@@ -56,11 +75,32 @@ function newId(prefix: string): string {
 export function StoreProvider({ children }: { children: ReactNode }) {
   const [ready, setReady] = useState(false);
   const [persistent, setPersistent] = useState(true);
+  const [feed, setFeed] = useState<Feed>(BUNDLED_FEED);
   const [me, setMe] = useState<Me | null>(null);
   const [posts, setPosts] = useState<LocalPost[]>([]);
   const [replies, setReplies] = useState<LocalReply[]>([]);
   const [likes, setLikes] = useState<string[]>([]);
   const [attending, setAttending] = useState<string[]>([]);
+
+  /*
+   * 開くたび、および前面に戻るたびに取り直す。
+   *
+   * 数時間おきに増えるものなので、頻繁に見に行く必要はない。復帰したときに
+   * 進んでいることが分かれば十分。
+   */
+  useEffect(() => {
+    const refresh = () => {
+      void fetchFeed().then((fresh) => {
+        if (fresh) setFeed(fresh);
+      });
+    };
+    refresh();
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') refresh();
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => document.removeEventListener('visibilitychange', onVisible);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -166,7 +206,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     () => ({
       ready,
       persistent,
-      feed: FEED,
+      feed,
       me,
       posts,
       replies,
@@ -180,7 +220,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       toggleAttend,
       wipe,
     }),
-    [attending, join, likes, me, persistent, posts, ready, rename, reply, replies, toggleAttend, toggleLike, wipe, write],
+    [attending, feed, join, likes, me, persistent, posts, ready, rename, reply, replies, toggleAttend, toggleLike, wipe, write],
   );
 
   return <StoreContext.Provider value={value}>{children}</StoreContext.Provider>;

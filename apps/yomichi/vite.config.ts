@@ -63,9 +63,32 @@ function swPrecache(base: string): Plugin {
   };
 }
 
+/**
+ * 住人の書き込みを、バンドルとは別のファイルとして出す。
+ *
+ * ここを JS に埋め込んでしまうと、書き込みが増えるたびにハッシュ付きの
+ * ファイル名が変わり、Service Worker の版を切り替えないと新しい書き込みが
+ * 届かなくなる。**中身と器を分けて、中身だけ毎回取りに行けるようにする。**
+ * バンドル側にも初期値として入っているので、圏外でも空にはならない。
+ */
+function emitContent(): Plugin {
+  return {
+    name: 'yomichi-content',
+    async generateBundle() {
+      for (const name of ['feed.json', 'residents.json']) {
+        this.emitFile({
+          type: 'asset',
+          fileName: name,
+          source: await readFile(resolve(import.meta.dirname, 'content', name), 'utf8'),
+        });
+      }
+    },
+  };
+}
+
 export default defineConfig({
   base: BASE,
-  plugins: [react(), swPrecache(BASE)],
+  plugins: [react(), emitContent(), swPrecache(BASE)],
   server: { port: Number(process.env.PORT) || 5210 },
   build: { outDir: 'dist', emptyOutDir: true, target: 'es2022' },
 });
