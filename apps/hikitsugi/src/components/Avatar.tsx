@@ -19,6 +19,7 @@ export function Avatar({
   current,
   progress,
   mark,
+  live = false,
 }: {
   name: string;
   size?: number;
@@ -26,6 +27,8 @@ export function Avatar({
   current?: number;
   progress?: number;
   mark?: string;
+  /** いまやり取りが動いている。環が脈打つ。 */
+  live?: boolean;
 }) {
   const ringed = inherited !== undefined || progress !== undefined;
   const stroke = size >= 40 ? 3 : 2.5;
@@ -55,7 +58,7 @@ export function Avatar({
   );
 
   return (
-    <span className={`avatar${ringed ? ' avatar--ringed' : ''}`} style={{ width: size, height: size }}>
+    <span className={`avatar${ringed ? ' avatar--ringed' : ''}${live ? ' avatar--live' : ''}`} style={{ width: size, height: size }}>
       {ringed ? (
         <svg className="avatar__ring" viewBox={`0 0 ${size} ${size}`} aria-hidden="true">
           <circle cx={c} cy={c} r={r} fill="none" strokeWidth={stroke} className="avatar__rest" />

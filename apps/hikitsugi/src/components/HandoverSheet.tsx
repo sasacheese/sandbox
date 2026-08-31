@@ -8,9 +8,9 @@ import { DayGrid } from './DayGrid.tsx';
 import { Ribbon } from './Ribbon.tsx';
 
 const THEIR_LABEL: Record<TheirDecision, string> = {
-  inherit: '相手方も引き継ぎました',
-  refuse: '相手方は引き継ぎませんでした',
-  agent_only: '相手方は代理人に任せました',
+  inherit: '相手も引き継ぎました',
+  refuse: '相手は引き継ぎませんでした',
+  agent_only: '相手は代理にまかせました',
 };
 
 /**
@@ -52,7 +52,7 @@ export function HandoverSheet({ threadId, onClose }: { threadId: string; onClose
 
           <section className="cover">
             <div className="cover__title">
-              あなたの代理人に、
+              あなたの代理に、
               <br />
               友達ができました。
             </div>
@@ -75,11 +75,11 @@ export function HandoverSheet({ threadId, onClose }: { threadId: string; onClose
                 <span className="kv__value">{handover.short}</span>
               </div>
               <div className="kv">
-                <span className="kv__key">本人同士の沈黙</span>
+                <span className="kv__key">連絡なしの期間</span>
                 <span className="kv__value">{handover.dormant}</span>
               </div>
               <div className="kv">
-                <span className="kv__key">交流期間</span>
+                <span className="kv__key">やり取りした期間</span>
                 <span className="kv__value" style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                   {handover.days} 日
                   <DayGrid days={handover.days} filled={handover.days} />
@@ -94,11 +94,11 @@ export function HandoverSheet({ threadId, onClose }: { threadId: string; onClose
                 <span className="kv__value num">{handover.tally.secrets} 件</span>
               </div>
               <div className="kv">
-                <span className="kv__key">解決した対立</span>
+                <span className="kv__key">仲直りしたけんか</span>
                 <span className="kv__value num">{handover.tally.conflicts} 件</span>
               </div>
               <div className="kv">
-                <span className="kv__key">友情に至らなかった相手</span>
+                <span className="kv__key">友達にならなかった相手</span>
                 <span className="kv__value num">{handover.tally.otherAgents} 人の代理人</span>
               </div>
               <div className="kv">
@@ -135,7 +135,7 @@ export function HandoverSheet({ threadId, onClose }: { threadId: string; onClose
                 </div>
                 <div className="meter__row">
                   <span>{closenessLabel(handover.closeness)}</span>
-                  <span>代理人が {handover.closeness} まで築いた</span>
+                  <span>うち {handover.closeness} は代理</span>
                 </div>
               </div>
 
@@ -187,9 +187,9 @@ export function HandoverSheet({ threadId, onClose }: { threadId: string; onClose
           <section className="section">
             <div className="section__head">
               <span className="section__no">03</span>
-              <span className="section__title">代理人が外へ出した情報</span>
+              <span className="section__title">代理が外へ出した情報</span>
             </div>
-            <p className="sub">関係を築くため、以下をあなたについての事実として共有しました。</p>
+            <p className="sub">相手と親しくなるために、以下をあなたのこととして伝えました。</p>
             {handover.leaked.map((line) => (
               <div className="leak" key={line}>
                 {line.split('**').map((part, i) => (i % 2 === 1 ? <strong key={i}>{part}</strong> : part))}
@@ -221,19 +221,19 @@ export function HandoverSheet({ threadId, onClose }: { threadId: string; onClose
             <div className="decisions">
               <Choice
                 title="この友情を引き継ぐ"
-                body="以後はあなたが応対します。トークが「トーク」へ移ります。相手側の人間が応対するかどうかは、確定してから分かります。"
+                body="以後は自分で返事をします。トークが「トーク」へ移ります。相手が自分で返事をするかどうかは、決めたあとに分かります。"
                 on={confirm === 'inherit'}
                 onClick={() => setConfirm('inherit')}
               />
               <Choice
-                title="代理人だけに続けさせる"
-                body="あなたは受け取りません。週に一度、代理人の報告だけがそのトークに届きます。"
+                title="代理だけに続けさせる"
+                body="あなたはこのやり取りに入りません。週に一度、代理からの報告だけがそのトークに届きます。"
                 on={confirm === 'agent_only'}
                 onClick={() => setConfirm('agent_only')}
               />
               <Choice
-                title="相手を知らないまま終了する"
-                body="この関係は破棄されます。相手には通知されません。"
+                title="このまま終わりにする"
+                body="このやり取りは無くなります。相手には知らされません。"
                 on={confirm === 'end'}
                 onClick={() => setConfirm('end')}
               />
@@ -243,10 +243,10 @@ export function HandoverSheet({ threadId, onClose }: { threadId: string; onClose
               <>
                 <div className="notice">
                   {confirm === 'inherit'
-                    ? '引き継ぎを申請します。相手方の判断は、この引継書の発行時点で確定しています。'
+                    ? '引き継ぎを申し込みます。相手の判断は、この引継書が出た時点で決まっています。'
                     : confirm === 'agent_only'
                       ? 'あなたはこの関係の当事者になりません。取り消せません。'
-                      : 'この関係を破棄します。取り消せません。'}
+                      : 'このやり取りを無くします。取り消せません。'}
                 </div>
                 <button
                   className="btn"
@@ -302,11 +302,11 @@ function ResultSheet({ handover, decision, onClose }: { handover: Handover; deci
               <div className="kv">
                 <span className="kv__key">あなたの判断</span>
                 <span className="kv__value">
-                  {decision === 'inherit' ? 'この友情を引き継ぐ' : decision === 'agent_only' ? '代理人だけに続けさせる' : '知らないまま終了する'}
+                  {decision === 'inherit' ? 'この友情を引き継ぐ' : decision === 'agent_only' ? '代理だけに続けさせる' : 'このまま終わりにする'}
                 </span>
               </div>
               <div className="kv">
-                <span className="kv__key">相手方の判断</span>
+                <span className="kv__key">相手の判断</span>
                 <span className="kv__value">{THEIR_LABEL[handover.theirs]}</span>
               </div>
             </div>
@@ -324,7 +324,7 @@ function ResultSheet({ handover, decision, onClose }: { handover: Handover; deci
                 </div>
               </div>
               <p className="sub">
-                双方が引き継ぎを希望しました。以後、このやり取りは人間同士のものになります。本人同士の沈黙は
+                両方が引き継ぎました。以後、このやり取りは人間同士のものになります。本人同士が連絡していなかったのは
                 {handover.dormant}でした。
               </p>
             </section>
@@ -333,7 +333,7 @@ function ResultSheet({ handover, decision, onClose }: { handover: Handover; deci
           {decision === 'inherit' && handover.theirs === 'agent_only' ? (
             <>
               <div className="notice">
-                相手方の人間は応対しません。以後、相手側の発言はすべて相手方の代理人によるものです。この扱いは変更できません。
+                相手は自分で返事をしません。以後、相手側の発言はすべて相手の代理です。これは変えられません。
               </div>
               <p className="doc">
                 あなたはこれから、{handover.name} の代理人と話します。**{handover.name}** 本人は、この関係に一度も出てきていません。
@@ -343,9 +343,9 @@ function ResultSheet({ handover, decision, onClose }: { handover: Handover; deci
 
           {decision === 'inherit' && handover.theirs === 'refuse' ? (
             <>
-              <div className="notice">相手方の人間は、この関係の引き継ぎを希望しませんでした。理由は共有されていません。</div>
+              <div className="notice">相手はこの引き継ぎを断りました。理由は聞けません。</div>
               <p className="doc">
-                トークは残りますが、{handover.name} からの返信はありません。あなたの代理人は、まだ続けることを希望しています。
+                トークは残りますが、{handover.name} からの返信はありません。あなたの代理は、まだ続けたいと言っています。
               </p>
             </>
           ) : null}
@@ -353,8 +353,8 @@ function ResultSheet({ handover, decision, onClose }: { handover: Handover; deci
           {decision !== 'inherit' ? (
             <p className="doc">
               {decision === 'agent_only'
-                ? 'あなたはこの関係の当事者になりませんでした。週に一度、代理人からの報告だけが届きます。'
-                : 'この関係は破棄されました。相手には通知されません。あなたの代理人は、当面のあいだ相手を待ち続けます。'}
+                ? 'あなたはこのやり取りに入りませんでした。週に一度、代理からの報告だけが届きます。'
+                : 'このやり取りは無くなりました。相手には知らされていません。あなたの代理は、しばらく相手を待ち続けます。'}
             </p>
           ) : null}
 

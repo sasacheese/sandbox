@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { effectiveCloseness } from '../lib/closeness.ts';
 import { clockTime, closenessLabel } from '../lib/format.ts';
-import { bubblesOf, daysSinceInherit, storyDay, isReady } from '../lib/threads.ts';
+import { bubblesOf, daysSinceInherit, isReady, nextPost, storyDay } from '../lib/threads.ts';
 import type { AskAnswer, Bubble, Thread } from '../lib/types.ts';
 import { useStore } from '../store.tsx';
 import { Avatar } from './Avatar.tsx';
@@ -30,14 +30,23 @@ export function Chat({ thread, onBack, onOpenHandover }: { thread: Thread; onBac
   const base = handover?.closeness ?? 0;
   const closeness = inherited ? effectiveCloseness(base, thread.delta, daysSinceInherit(thread, now)) : base;
 
+  /*
+   * 次の一通が来る直前の「…」。
+   *
+   * 台本があるので、次に喋るのがどちら側かは分かっている。隠さずに演出へ回す。
+   * これがあると、間が空いているのが「止まっている」ではなく「書いている」に見える。
+   */
+  const coming = nextPost(thread, now);
+  const typing = coming && coming.at - now.getTime() < TYPING_MS ? coming.side : null;
+
   // 開いたら既読にする。未読の数はここで消える
   useEffect(() => {
     void markRead(thread.id);
   }, [markRead, thread.id, bubbles.length]);
 
   useLayoutEffect(() => {
-    bottom.current?.scrollIntoView({ block: 'end' });
-  }, [bubbles.length, thread.id]);
+    bottom.current?.scrollIntoView({ block: 'end', behavior: bubbles.length > 0 ? 'smooth' : 'auto' });
+  }, [bubbles.length, thread.id, typing]);
 
   /*
    * 出たての一通。
@@ -63,9 +72,9 @@ export function Chat({ thread, onBack, onOpenHandover }: { thread: Thread; onBac
               ? '自分のトーク'
               : inherited
                 ? thread.theirs === 'agent_only'
-                  ? '相手は代理人が応対しています'
+                  ? '相手側は代理が返事をしています'
                   : '引き継ぎ済み'
-                : `代理人が応対中 · ${ready ? (thread.days ?? 0) : Math.min(storyDay(thread, now), thread.days ?? 0)} / ${thread.days} 日`}
+                : `代理がやり取り中 · ${ready ? (thread.days ?? 0) : Math.min(storyDay(thread, now), thread.days ?? 0)} / ${thread.days} 日`}
           </div>
         </div>
       </header>
@@ -80,7 +89,7 @@ export function Chat({ thread, onBack, onOpenHandover }: { thread: Thread; onBac
           <div className="closeness__row">
             <span>{closenessLabel(closeness)}</span>
             <span>
-              {closeness} / 100　代理人が {base} まで築いた
+              {closeness} / 100　うち {base} は代理
             </span>
           </div>
         </div>
@@ -113,6 +122,16 @@ export function Chat({ thread, onBack, onOpenHandover }: { thread: Thread; onBac
           );
         })}
 
+        {typing ? (
+          <div className={`bubblerow bubblerow--${typing}`}>
+            <div className="typing" aria-label="入力中">
+              <span />
+              <span />
+              <span />
+            </div>
+          </div>
+        ) : null}
+
         {thread.kind === 'plain' && !inherited && thread.sent.length === 0 ? (
           <p className="streamnote">
             最後のやり取りから、ずいぶん経っています。
@@ -137,8 +156,8 @@ export function Chat({ thread, onBack, onOpenHandover }: { thread: Thread; onBac
             <button
               type="button"
               className="iconbtn iconbtn--agent"
-              title="代理人に任せる"
-              aria-label="代理人に任せる"
+              title="代理に任せる"
+              aria-label="代理に任せる"
               onClick={() => void delegate(thread.id)}
             >
               代
@@ -161,12 +180,12 @@ export function Chat({ thread, onBack, onOpenHandover }: { thread: Thread; onBac
         <div className="agentbar">
           <span className="agentbar__text">
             {thread.decision === 'end'
-              ? 'このトークは破棄されました。'
+              ? 'このトークは終わりにしました。'
               : thread.decision === 'agent_only'
-                ? '代理人だけが応対しています。あなたは参加していません。'
+                ? '代理だけが続けています。あなたは入っていません。'
                 : ready
-                  ? '交流が満了しました。引継書を読めます。'
-                  : 'あなたの代理人が応対しています。ここには書き込めません。'}
+                  ? 'やり取りが終わりました。引継書を読めます。'
+                  : '代理がやり取りしています。ここには書き込めません。'}
           </span>
           {ready ? (
             <button type="button" className="agentbar__btn" onClick={onOpenHandover}>
@@ -181,6 +200,9 @@ export function Chat({ thread, onBack, onOpenHandover }: { thread: Thread; onBac
 
 /** 届いてから、出たての印を出しておく長さ。 */
 const FRESH_MS = 2_500;
+
+/** 次の一通が来るまで、あと何ミリ秒から「…」を出すか。 */
+const TYPING_MS = 3_500;
 
 function Turn({
   bubble,
@@ -210,7 +232,7 @@ function Turn({
         </div>
       </div>
       )}
-      {bubble.fabricated ? <p className="fabnote">※ この発言は事実に基づきません</p> : null}
+      {bubble.fabricated ? <p className="fabnote">※ これは本当のことではありません</p> : null}
     </>
   );
 }
@@ -234,12 +256,12 @@ function Ask({
 
   return (
     <div className={`askcard${fresh ? ' askcard--fresh' : ''}`}>
-      <div className="askcard__head">代理人からの確認</div>
+      <div className="askcard__head">代理からの確認</div>
       <p className="askcard__text">{ask.text}</p>
       {ask.answered ? (
         <div className="askcard__done">「{label[ask.answered]}」と答えました</div>
       ) : ask.autoFilled ? (
-        <div className="askcard__auto">答えないうちに、代理人が埋めました</div>
+        <div className="askcard__auto">答えなかったので、代理が勝手に答えました</div>
       ) : (
         <div className="askcard__btns">
           <button type="button" className="opt" onClick={() => onAnswer('yes')}>

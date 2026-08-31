@@ -1,5 +1,6 @@
+import { useEffect, useRef, useState } from 'react';
 import { dormantLabel } from '../lib/format.ts';
-import { bubblesOf, storyDay, isReady } from '../lib/threads.ts';
+import { bubblesOf, isLive, isReady, storyDay } from '../lib/threads.ts';
 import type { Thread } from '../lib/types.ts';
 import { useStore } from '../store.tsx';
 import { Avatar } from './Avatar.tsx';
@@ -9,13 +10,12 @@ import { Avatar } from './Avatar.tsx';
  *
  * ここが**この作品でいちばん短く言える画面**になる。上の帯に二つの数字が並ぶ。
  *
- *   あなたが築いた 3　／　代理人が築いた 9
+ *   自分の友達 3　／　代理の友達 9
  *
  * 左の数字は動かない。右の数字は、眺めているあいだに増える。
  *
- * 代理人が仕掛かっている相手は、顔に**茶の環**（交流期間の進み具合）と
- * 「代」の印が付く。誰と誰が自分の友達で、誰と誰が代理人の友達なのかを、
- * 文章を読まずに見分けられるようにしてある。
+ * 代理が動いている相手は、顔に**環**（やり取りの進み具合）と「代」の印が付く。
+ * 誰と誰が自分の友達で、誰と誰が代理の友達なのかを、文章を読まずに見分けられる。
  */
 export function Friends({ onOpen }: { onOpen: (threadId: string) => void }) {
   const { threads, now } = useStore();
@@ -23,8 +23,8 @@ export function Friends({ onOpen }: { onOpen: (threadId: string) => void }) {
   const groups: { key: string; title: string; note?: string; threads: Thread[] }[] = [
     {
       key: 'building',
-      title: '代理人が交流しています',
-      note: '満了すると引き継げます。',
+      title: '代理がやり取りしています',
+      note: 'やり取りが終わると引き継げます。',
       threads: threads.filter((t) => t.kind === 'proxy' && !t.decision && !isReady(t, now)),
     },
     {
@@ -34,18 +34,18 @@ export function Friends({ onOpen }: { onOpen: (threadId: string) => void }) {
     },
     {
       key: 'inherited',
-      title: 'あなたが引き継ぎました',
+      title: '自分で引き継いだ相手',
       threads: threads.filter((t) => t.decision === 'inherit'),
     },
     {
       key: 'yours',
-      title: 'あなたの友達',
-      note: '自分で築いた関係です。',
+      title: '自分の友達',
+      note: '自分でやり取りしている相手です。',
       threads: threads.filter((t) => t.kind === 'plain' && !t.decision),
     },
     {
       key: 'left',
-      title: '手を離れたもの',
+      title: '終わったもの',
       threads: threads.filter((t) => t.decision === 'agent_only' || t.decision === 'end'),
     },
   ];
@@ -69,16 +69,16 @@ export function Friends({ onOpen }: { onOpen: (threadId: string) => void }) {
           <div className="tally__row">
             <span className="tally__key">
               <span className="tally__dot tally__dot--mine" aria-hidden="true" />
-              あなたが築いた
+              自分の友達
             </span>
-            <span className="tally__num">{mine}</span>
+            <Count value={mine} />
           </div>
           <div className="tally__row">
             <span className="tally__key">
               <span className="tally__dot tally__dot--proxy" aria-hidden="true" />
-              代理人が築いた
+              代理の友達
             </span>
-            <span className="tally__num">{proxy}</span>
+            <Count value={proxy} />
           </div>
         </div>
       </div>
@@ -103,6 +103,34 @@ export function Friends({ onOpen }: { onOpen: (threadId: string) => void }) {
   );
 }
 
+/**
+ * 増えるところを見せる数字。
+ *
+ * 差し替わるだけだと、増えたことに気づかない。左の数字が動かないまま右だけが
+ * 上がっていく——そこがこの画面の言いたいことなので、動くところを見せる。
+ */
+function Count({ value }: { value: number }) {
+  const [shown, setShown] = useState(value);
+  const from = useRef(value);
+
+  useEffect(() => {
+    if (from.current === value) return;
+    const start = from.current;
+    const at = performance.now();
+    let frame = 0;
+    const step = () => {
+      const ratio = Math.min(1, (performance.now() - at) / 520);
+      setShown(Math.round(start + (value - start) * ratio));
+      if (ratio < 1) frame = requestAnimationFrame(step);
+      else from.current = value;
+    };
+    frame = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(frame);
+  }, [value]);
+
+  return <span className={`tally__num${shown !== value ? ' tally__num--moving' : ''}`}>{shown}</span>;
+}
+
 function Friend({ thread, onOpen }: { thread: Thread; onOpen: (threadId: string) => void }) {
   const { now, handoverFor } = useStore();
   const handover = thread.kind === 'proxy' ? handoverFor(thread.id) : null;
@@ -110,6 +138,7 @@ function Friend({ thread, onOpen }: { thread: Thread; onOpen: (threadId: string)
   const elapsed = Math.min(storyDay(thread, now), days);
   const progress = days > 0 ? elapsed / days : 0;
   const building = thread.kind === 'proxy' && !thread.decision && !isReady(thread, now);
+  const live = isLive(thread, now);
 
   /*
    * 沈黙の長さ。
@@ -123,18 +152,14 @@ function Friend({ thread, onOpen }: { thread: Thread; onOpen: (threadId: string)
 
   return (
     <button type="button" className="friend" onClick={() => onOpen(thread.id)}>
-      <Avatar
-        name={thread.title}
-        size={40}
-        {...(thread.kind === 'proxy' ? { progress, mark: '代' } : {})}
-      />
+      <Avatar name={thread.title} size={42} live={live} {...(thread.kind === 'proxy' ? { progress, mark: '代' } : {})} />
       <div className="friend__body">
         <div className="friend__top">
           <span className="friend__name">{thread.title}</span>
           <State thread={thread} />
         </div>
         <div className="friend__sub">
-          {handover ? `${handover.short} · ` : ''}沈黙 {dormant}
+          {handover ? `${handover.short} · ` : ''}連絡なし {dormant}
         </div>
         {building ? (
           <div className="friend__progress">
@@ -142,6 +167,7 @@ function Friend({ thread, onOpen }: { thread: Thread; onOpen: (threadId: string)
               <span className="friend__fill" style={{ width: `${Math.round(progress * 100)}%` }} />
             </div>
             <span className="friend__days">
+              {live ? <span className="live__dot" aria-hidden="true" /> : null}
               {elapsed} / {days} 日
             </span>
           </div>
@@ -153,11 +179,11 @@ function Friend({ thread, onOpen }: { thread: Thread; onOpen: (threadId: string)
 
 function State({ thread }: { thread: Thread }) {
   const { now } = useStore();
-  if (thread.decision === 'inherit') return <span className="chip-state">あなたが応対</span>;
-  if (thread.decision === 'agent_only') return <span className="chip-state chip-state--closed">代理人が継続</span>;
-  if (thread.decision === 'end') return <span className="chip-state chip-state--closed">破棄</span>;
+  if (thread.decision === 'inherit') return <span className="chip-state">自分で返信</span>;
+  if (thread.decision === 'agent_only') return <span className="chip-state chip-state--closed">代理が続けています</span>;
+  if (thread.decision === 'end') return <span className="chip-state chip-state--closed">終わり</span>;
   if (thread.kind === 'plain') return <span className="chip-state chip-state--mine">自分で</span>;
-  if (isReady(thread, now)) return <span className="chip-state chip-state--ready">引き継ぎ可能</span>;
+  if (isReady(thread, now)) return <span className="chip-state chip-state--ready">引き継げます</span>;
   /*
    * 交流中の行には印を出さない。
    *

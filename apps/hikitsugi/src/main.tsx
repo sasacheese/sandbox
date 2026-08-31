@@ -1,6 +1,7 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { App } from './App.tsx';
+import { Defs } from './components/Defs.tsx';
 import { registerServiceWorker } from './lib/updates.ts';
 import { StoreProvider } from './store.tsx';
 import './styles.css';
@@ -11,6 +12,7 @@ if (!root) throw new Error('#root が無い');
 createRoot(root).render(
   <StrictMode>
     <StoreProvider>
+      <Defs />
       <App />
     </StoreProvider>
   </StrictMode>,

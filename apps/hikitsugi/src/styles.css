@@ -3,41 +3,63 @@
  *
  * 画面は二つの層でできている。
  *
- * 1. **メッセンジャー**——普通のトークアプリに見えないと成立しない。トークが
- *    二種類あることだけが普通ではないので、書式は両タブで完全に同じにする。
+ * 1. **メッセンジャー**——普通のトークアプリに見えないと成立しない。少し先の
+ *    時代の製品として、丸みと発色を強めにとる。トークが二種類あることだけが
+ *    普通ではないので、書式は両タブで完全に同じにする。
  * 2. **書類**——引継書。契約書の体裁がそのまま不気味さになる。本文は明朝。
  *
- * 色の規則を一本にして、両方の層で守る。
- *   墨　＝ あなたが書いた／あなたが足したぶん
- *   茶　＝ 代理人が書いた／代理人が築いたぶん
- *   白　＝ 相手の人間が書いた
- *   朱　＝ 事実に基づかない発言の注記、未読、失ったぶん
+ * 色の規則は一本だけ。**誰が打ったか**を色で言う。
+ *   緑　＝ あなたが打った
+ *   藍　＝ 代理が打った
+ *   白　＝ 相手の人間が打った
+ *   薄藍＝ 相手の代理が打った
+ *   桃　＝ 本当ではない発言の注記、未読
  *
- * 暗い側の配色は用意しない。書類に夜の顔は無いのと、トークの地が暗いと
- * 茶と墨の差が読めなくなるため。
+ * つまり**画面が藍で埋まっているあいだ、そこに人間はいない。**引き継ぐと
+ * 緑が混じりはじめる。色が変わるところが引き継ぎそのもの。
+ *
+ * 暗い側の配色は用意しない。書類に夜の顔は無いのと、地が暗いと藍と緑の差が
+ * 読めなくなるため。
  */
 
 :root {
   color-scheme: light;
 
-  /* 地は白。吹き出しと書類が地から浮くよう、面の色を一段用意する */
+  /* 地は一段冷たい灰。白いカードと吹き出しが浮く */
+  --bg: #eef1f7;
   --paper: #ffffff;
-  --sheet: #faf8f4;
-  --field: #f4f1ea;
-  --ink: #2b2721;
-  --ink-dim: #57514a;
-  --muted: #857e75;
-  --faint: #b4ada3;
-  --rule: #e6e0d3;
-  --rule-strong: #cdc4b3;
+  --sheet: #f8fafc;
+  --field: #f1f4fa;
+  --ink: #171a21;
+  --ink-dim: #4d5563;
+  --muted: #7b8494;
+  --faint: #a9b1c0;
+  --rule: #e4e8f0;
+  --rule-strong: #cbd2df;
 
-  --proxy: #8f6a3d;
-  --proxy-soft: #f3ead9;
-  --warn: #a3402f;
+  /* 代理が打ったぶん。少し先の時代の製品らしく、藍を強めに出す */
+  --proxy: #4f46e5;
+  --proxy-2: #8b5cf6;
+  --proxy-soft: #eeecfe;
+  --proxy-glow: rgba(79, 70, 229, 0.3);
 
-  --radius: 3px;
+  /* あなたが打ったぶん */
+  --me: #06c063;
+  --me-2: #34d17f;
+  --me-soft: #e2f8ed;
+
+  --warn: #e11d62;
+  --warn-soft: #ffe7ef;
+
+  --radius: 4px;
+  --r-card: 16px;
+  --r-bubble: 21px;
+  --r-cut: 7px;
   --pad: 15px;
   --measure: 520px;
+
+  /* 絵記号の抜き（塗ったときに内側を地の色で抜く） */
+  --tab-cut: var(--paper);
 
   --sans: -apple-system, BlinkMacSystemFont, 'Hiragino Sans', 'Noto Sans JP', system-ui, sans-serif;
   --serif: 'Hiragino Mincho ProN', 'Yu Mincho', 'Noto Serif JP', serif;
@@ -53,7 +75,7 @@ html,
 body {
   margin: 0;
   padding: 0;
-  background: var(--paper);
+  background: var(--bg);
   color: var(--ink);
 }
 
@@ -89,7 +111,7 @@ p {
   min-height: 100dvh;
   display: flex;
   flex-direction: column;
-  background: var(--paper);
+  background: var(--bg);
 }
 
 .label {
@@ -122,50 +144,113 @@ p {
   position: sticky;
   top: 0;
   z-index: 4;
-  background: color-mix(in srgb, var(--paper) 94%, transparent);
-  backdrop-filter: blur(10px);
-  border-bottom: 1px solid var(--rule);
-  padding: calc(env(safe-area-inset-top) + 13px) var(--pad) 10px;
+  background: color-mix(in srgb, var(--bg) 78%, transparent);
+  backdrop-filter: blur(18px) saturate(1.4);
+  padding: calc(env(safe-area-inset-top) + 14px) var(--pad) 11px;
   display: flex;
   align-items: baseline;
   gap: 10px;
 }
 
+/* 見出しの下の一本。中央だけ藍が差す——製品としての「線」 */
+.listhead::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--proxy) 45%, transparent), transparent);
+}
+
 .listhead__title {
-  font-family: var(--serif);
-  font-size: 20px;
-  letter-spacing: 0.06em;
+  font-size: 21px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
 }
 
 .listhead__note {
   margin-left: auto;
-  font-size: 11.5px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
   color: var(--muted);
+  white-space: nowrap;
 }
 
 .listhead__lede {
-  padding: 11px var(--pad) 1px;
+  padding: 12px var(--pad) 4px;
   font-size: 12px;
   color: var(--muted);
-  line-height: 1.75;
+  line-height: 1.8;
+}
+
+/* いま動いている本数。数字の隣で点が脈打つ */
+.live {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--proxy);
+  font-family: var(--mono);
+  font-size: 9.5px;
+  letter-spacing: 0.06em;
+  background: var(--proxy-soft);
+  border-radius: 999px;
+  padding: 3px 9px 3px 7px;
+}
+
+.live__dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--proxy);
+  box-shadow: 0 0 0 0 var(--proxy-glow);
+  animation: pulse 1.8s ease-out infinite;
+  flex: none;
+}
+
+@keyframes pulse {
+  0% {
+    box-shadow: 0 0 0 0 var(--proxy-glow);
+  }
+  70% {
+    box-shadow: 0 0 0 7px rgba(79, 70, 229, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(79, 70, 229, 0);
+  }
 }
 
 .rows {
+  flex: 1;
   display: flex;
   flex-direction: column;
-  padding-bottom: 80px;
+  padding-bottom: 96px;
+  /* 行の面は白。地の灰から浮かせる（下まで白で埋める） */
+  background: var(--paper);
 }
 
 .row {
+  position: relative;
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 13px;
   width: 100%;
   padding: 13px var(--pad);
   background: transparent;
   border: none;
-  border-bottom: 1px solid var(--rule);
   text-align: left;
+}
+
+.row + .row::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 70px;
+  right: 0;
+  height: 1px;
+  background: var(--rule);
 }
 
 .row:active {
@@ -173,7 +258,7 @@ p {
 }
 
 .row--closed {
-  opacity: 0.5;
+  opacity: 0.45;
 }
 
 .row__body {
@@ -189,7 +274,8 @@ p {
 
 .row__title {
   font-size: 15.5px;
-  font-weight: 600;
+  font-weight: 700;
+  letter-spacing: 0.01em;
 }
 
 .row__time {
@@ -204,13 +290,14 @@ p {
   display: flex;
   align-items: center;
   gap: 6px;
-  margin-top: 1px;
+  margin-top: 2px;
   min-width: 0;
 }
 
-/* 三行目。状態・沈黙の長さ・未回答の確認。詰まったら確認だけ右へ寄せる */
+/* 三行目。状態・連絡が無い期間・未回答の確認。詰まったら確認だけ右へ寄せる */
 .row__preview--state {
   gap: 8px;
+  margin-top: 5px;
 }
 
 .row__preview--state .chip-state--ask {
@@ -228,47 +315,84 @@ p {
 .row__badge {
   flex: none;
   margin-left: auto;
-  min-width: 18px;
-  height: 18px;
+  min-width: 19px;
+  height: 19px;
   border-radius: 999px;
   background: var(--warn);
   color: #fff;
   font-family: var(--mono);
   font-size: 10px;
-  line-height: 18px;
+  font-weight: 600;
+  line-height: 19px;
   text-align: center;
-  padding: 0 5px;
+  padding: 0 6px;
+  box-shadow: 0 1px 5px rgba(225, 29, 98, 0.35);
 }
 
+/* 状態の札。塗るのは「引き継げます」だけ——遠目でもそこだけ拾える */
 .chip-state {
   flex: none;
   font-family: var(--mono);
   font-size: 9.5px;
-  letter-spacing: 0.08em;
-  color: var(--muted);
-  border: 1px solid var(--rule-strong);
+  letter-spacing: 0.07em;
+  color: var(--ink-dim);
+  background: var(--field);
   border-radius: 999px;
-  padding: 1px 7px;
+  padding: 3px 9px;
   white-space: nowrap;
 }
 
 .chip-state--ready {
+  position: relative;
+  overflow: hidden;
   color: #fff;
-  border-color: var(--proxy);
-  background: var(--proxy);
+  background: linear-gradient(120deg, var(--proxy-2), var(--proxy));
+  box-shadow: 0 2px 9px var(--proxy-glow);
+}
+
+/* 引き継げるものだけ、光がひとなでする */
+.chip-state--ready::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(105deg, transparent 35%, rgba(255, 255, 255, 0.55) 50%, transparent 65%);
+  transform: translateX(-120%);
+  animation: sweep 3.4s ease-in-out infinite;
+}
+
+@keyframes sweep {
+  0%,
+  55% {
+    transform: translateX(-120%);
+  }
+  85%,
+  100% {
+    transform: translateX(120%);
+  }
 }
 
 .chip-state--closed {
   color: var(--faint);
 }
 
+.chip-state--proxy {
+  color: var(--proxy);
+  background: var(--proxy-soft);
+}
+
+.chip-state--mine {
+  color: color-mix(in srgb, var(--me) 78%, #000 22%);
+  background: var(--me-soft);
+}
+
 .empty {
-  padding: 48px 20px;
+  padding: 52px 20px;
   text-align: center;
   color: var(--muted);
   font-family: var(--serif);
   font-size: 14.5px;
   line-height: 2;
+  background: var(--paper);
 }
 
 /* ================================================================= 会話 */
@@ -277,75 +401,91 @@ p {
   display: flex;
   flex-direction: column;
   min-height: 100dvh;
+  background: var(--bg);
 }
 
 .chathead {
   position: sticky;
   top: 0;
   z-index: 4;
-  background: color-mix(in srgb, var(--paper) 94%, transparent);
-  backdrop-filter: blur(10px);
-  border-bottom: 1px solid var(--rule);
-  padding: calc(env(safe-area-inset-top) + 10px) 12px 8px;
+  background: color-mix(in srgb, var(--bg) 80%, transparent);
+  backdrop-filter: blur(18px) saturate(1.4);
+  padding: calc(env(safe-area-inset-top) + 10px) 12px 9px;
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 11px;
+}
+
+.chathead::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--proxy) 45%, transparent), transparent);
 }
 
 .chathead__back {
   background: none;
   border: none;
-  font-size: 22px;
+  font-size: 24px;
   line-height: 1;
-  color: var(--ink);
+  color: var(--proxy);
   padding: 2px 4px 2px 0;
 }
 
 .chathead__title {
   font-size: 16px;
-  font-weight: 600;
+  font-weight: 700;
 }
 
 .chathead__sub {
   font-size: 11px;
   color: var(--muted);
+  font-variant-numeric: tabular-nums;
 }
 
 .chathead__right {
   margin-left: auto;
 }
 
+/* 近さの帯。藍が代理のぶん、緑があなたのぶん、桃が失ったぶん */
 .closeness {
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  padding: 9px 14px 10px;
+  gap: 5px;
+  padding: 10px 14px 11px;
+  background: var(--paper);
   border-bottom: 1px solid var(--rule);
-  background: var(--sheet);
 }
 
 .closeness__bar {
-  height: 3px;
-  background: var(--rule);
+  height: 5px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: var(--field);
   display: flex;
 }
 
 .closeness__proxy {
   height: 100%;
-  background: var(--proxy);
+  background: linear-gradient(90deg, var(--proxy-2), var(--proxy));
+  transition: width 700ms ease-out;
 }
 
 .closeness__mine {
   height: 100%;
-  background: var(--ink);
+  background: linear-gradient(90deg, var(--me), var(--me-2));
+  transition: width 700ms ease-out;
 }
 
 .closeness__lost {
   height: 100%;
   background: repeating-linear-gradient(
     135deg,
-    color-mix(in srgb, var(--warn) 45%, transparent),
-    color-mix(in srgb, var(--warn) 45%, transparent) 3px,
+    color-mix(in srgb, var(--warn) 55%, transparent),
+    color-mix(in srgb, var(--warn) 55%, transparent) 3px,
     transparent 3px,
     transparent 6px
   );
@@ -363,8 +503,8 @@ p {
   flex: 1;
   display: flex;
   flex-direction: column;
-  gap: 9px;
-  padding: 14px var(--pad) 20px;
+  gap: 10px;
+  padding: 14px var(--pad) 24px;
 }
 
 .daystamp {
@@ -373,11 +513,10 @@ p {
   font-size: 9.5px;
   letter-spacing: 0.12em;
   color: var(--muted);
-  background: var(--sheet);
-  border: 1px solid var(--rule);
+  background: color-mix(in srgb, var(--paper) 82%, transparent);
   border-radius: 999px;
-  padding: 2px 11px;
-  margin: 7px 0 1px;
+  padding: 3px 12px;
+  margin: 8px 0 2px;
 }
 
 .divider {
@@ -385,10 +524,10 @@ p {
   display: flex;
   align-items: center;
   gap: 10px;
-  margin: 16px 0 6px;
+  margin: 18px 0 7px;
   font-size: 11.5px;
-  color: var(--ink);
-  font-family: var(--serif);
+  color: var(--me);
+  font-weight: 600;
 }
 
 .divider::before,
@@ -396,22 +535,28 @@ p {
   content: '';
   flex: 1;
   height: 1px;
-  background: var(--rule-strong);
+  background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--me) 55%, transparent));
+}
+
+.divider::after {
+  background: linear-gradient(90deg, color-mix(in srgb, var(--me) 55%, transparent), transparent);
 }
 
 .silence {
   align-self: center;
-  font-family: var(--serif);
-  font-size: 12px;
+  font-size: 11.5px;
   color: var(--proxy);
-  margin: 3px 0;
+  background: var(--proxy-soft);
+  border-radius: 999px;
+  padding: 3px 13px;
+  margin: 4px 0;
 }
 
 .bubblerow {
   display: flex;
   align-items: flex-end;
   gap: 6px;
-  max-width: 86%;
+  max-width: 82%;
 }
 
 .bubblerow--right {
@@ -423,45 +568,51 @@ p {
   align-self: flex-start;
 }
 
+/*
+ * 吹き出し。
+ *
+ * 話している側の角だけを落とす。**塗りの色が「誰が打ったか」を言う**ので、
+ * 左右（どちらの側か）と色（人間か代理か）で二つの情報が同時に読める。
+ */
 .bubble {
-  border-radius: 16px;
-  padding: 9px 13px;
+  border-radius: var(--r-bubble);
+  padding: 10px 15px;
   font-size: 15px;
-  line-height: 1.7;
+  line-height: 1.72;
   white-space: pre-wrap;
   word-break: break-word;
-  /* 地が白なので、相手の吹き出しは薄い面で塗る */
-  background: var(--field);
-  border: 1px solid var(--rule);
+  background: var(--paper);
+  box-shadow: 0 1px 2px rgba(23, 26, 33, 0.06);
 }
 
 .bubblerow--left .bubble {
-  border-top-left-radius: 5px;
+  border-bottom-left-radius: var(--r-cut);
 }
 
+/* あなたが打ったもの。緑 */
 .bubblerow--right .bubble {
-  border-top-right-radius: 5px;
-  background: #e8e3d6;
-  border-color: #ddd6c6;
+  border-bottom-right-radius: var(--r-cut);
+  background: linear-gradient(135deg, var(--me-2), var(--me));
+  color: #fff;
+  box-shadow: 0 2px 10px rgba(6, 192, 99, 0.28);
 }
 
 /*
- * 代理人が書いたもの。
+ * 代理が打ったもの。藍。
  *
- * 自分の側は茶で塗り、相手の側は白のまま左に茶の罫を立てる。両方塗ると
- * 左右の区別が消えて、誰の発言か追えなくなった（実際に読めなくなった）。
- * 「代理人が書いた」ことは色と罫で、「どちらの代理人か」は左右で示す。
+ * 自分の側は塗り、相手の側は薄い藍で置く。両方を濃く塗ると左右の区別が
+ * 消えて、誰の発言か追えなくなった（実際に読めなくなった）。
  */
 .bubblerow--right .bubble--agent {
-  background: var(--proxy-soft);
-  border-color: color-mix(in srgb, var(--proxy) 32%, var(--rule));
+  background: linear-gradient(135deg, var(--proxy-2), var(--proxy));
+  color: #fff;
+  box-shadow: 0 2px 12px var(--proxy-glow);
 }
 
 .bubblerow--left .bubble--agent {
-  background: var(--sheet);
-  border-color: var(--rule);
-  border-left: 3px solid var(--proxy);
-  padding-left: 11px;
+  background: var(--proxy-soft);
+  color: color-mix(in srgb, var(--proxy) 55%, #000 45%);
+  box-shadow: 0 1px 2px var(--proxy-glow);
 }
 
 .bubble__meta {
@@ -483,18 +634,73 @@ p {
   font-family: var(--mono);
   font-size: 8.5px;
   letter-spacing: 0.06em;
-  color: var(--proxy);
-  border: 1px solid var(--proxy);
-  border-radius: 3px;
-  padding: 0 3px;
+  color: #fff;
+  background: var(--proxy);
+  border-radius: 4px;
+  padding: 1px 4px;
 }
 
 .fabnote {
   align-self: flex-end;
   font-size: 11px;
   color: var(--warn);
-  max-width: 86%;
-  margin-top: -5px;
+  background: var(--warn-soft);
+  border-radius: 999px;
+  padding: 3px 11px;
+  max-width: 88%;
+  margin-top: -4px;
+}
+
+/*
+ * 「…」。
+ *
+ * 次の一通が来る数秒前に出す。台本があるので、次に喋るのがどちら側かは
+ * 分かっている——間が空いているのを「止まっている」ではなく「書いている」に
+ * 見せるために使う。
+ */
+.typing {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 13px 16px;
+  border-radius: var(--r-bubble);
+  background: var(--paper);
+  box-shadow: 0 1px 2px rgba(23, 26, 33, 0.06);
+}
+
+.bubblerow--right .typing {
+  background: var(--proxy-soft);
+  box-shadow: 0 1px 6px var(--proxy-glow);
+}
+
+.typing span {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--proxy);
+  opacity: 0.35;
+  animation: blink 1.15s ease-in-out infinite;
+}
+
+.typing span:nth-child(2) {
+  animation-delay: 0.18s;
+}
+
+.typing span:nth-child(3) {
+  animation-delay: 0.36s;
+}
+
+@keyframes blink {
+  0%,
+  70%,
+  100% {
+    opacity: 0.28;
+    transform: translateY(0);
+  }
+  35% {
+    opacity: 1;
+    transform: translateY(-3px);
+  }
 }
 
 .streamnote {
@@ -502,7 +708,7 @@ p {
   font-size: 12.5px;
   color: var(--muted);
   font-family: var(--serif);
-  padding: 24px 12px;
+  padding: 26px 12px;
   text-align: center;
   line-height: 2;
 }
@@ -517,19 +723,19 @@ p {
   align-items: flex-end;
   gap: 8px;
   padding: 9px 12px calc(env(safe-area-inset-bottom) + 9px);
-  background: color-mix(in srgb, var(--paper) 96%, transparent);
-  backdrop-filter: blur(10px);
+  background: color-mix(in srgb, var(--bg) 88%, transparent);
+  backdrop-filter: blur(18px);
   border-top: 1px solid var(--rule);
 }
 
 .composer__input {
   flex: 1;
-  min-height: 38px;
+  min-height: 40px;
   max-height: 120px;
-  padding: 9px 13px;
-  background: var(--field);
+  padding: 10px 15px;
+  background: var(--paper);
   border: 1px solid var(--rule-strong);
-  border-radius: 19px;
+  border-radius: 21px;
   outline: none;
   resize: none;
   font-size: 15px;
@@ -537,32 +743,35 @@ p {
 }
 
 .composer__input:focus {
-  border-color: var(--ink);
+  border-color: var(--proxy);
+  box-shadow: 0 0 0 3px var(--proxy-soft);
 }
 
 .iconbtn {
   flex: none;
-  width: 38px;
-  height: 38px;
+  width: 40px;
+  height: 40px;
   border-radius: 50%;
-  border: 1px solid var(--ink);
-  background: var(--ink);
-  color: var(--paper);
-  font-size: 15px;
+  border: none;
+  background: linear-gradient(135deg, var(--me-2), var(--me));
+  color: #fff;
+  font-size: 16px;
   display: grid;
   place-items: center;
+  box-shadow: 0 2px 9px rgba(6, 192, 99, 0.3);
 }
 
 .iconbtn:disabled {
   opacity: 0.3;
+  box-shadow: none;
 }
 
 .iconbtn--agent {
-  background: transparent;
-  border-color: var(--proxy);
+  background: var(--proxy-soft);
   color: var(--proxy);
-  font-family: var(--serif);
   font-size: 15px;
+  font-weight: 700;
+  box-shadow: none;
 }
 
 .agentbar {
@@ -573,8 +782,8 @@ p {
   align-items: center;
   gap: 10px;
   padding: 12px var(--pad) calc(env(safe-area-inset-bottom) + 12px);
-  background: color-mix(in srgb, var(--paper) 96%, transparent);
-  backdrop-filter: blur(10px);
+  background: color-mix(in srgb, var(--bg) 88%, transparent);
+  backdrop-filter: blur(18px);
   border-top: 1px solid var(--rule);
 }
 
@@ -587,14 +796,15 @@ p {
 
 .agentbar__btn {
   flex: none;
-  padding: 10px 16px;
+  padding: 11px 18px;
   border-radius: 999px;
-  border: 1px solid var(--proxy);
-  background: var(--proxy);
+  border: none;
+  background: linear-gradient(120deg, var(--proxy-2), var(--proxy));
   color: #fff;
   font-size: 13.5px;
-  font-weight: 600;
+  font-weight: 700;
   white-space: nowrap;
+  box-shadow: 0 3px 12px var(--proxy-glow);
 }
 
 /* ================================================================= タブ */
@@ -608,9 +818,9 @@ p {
   display: flex;
   max-width: var(--measure);
   margin: 0 auto;
-  background: color-mix(in srgb, var(--paper) 95%, transparent);
-  backdrop-filter: blur(10px);
-  border-top: 1px solid var(--rule-strong);
+  background: color-mix(in srgb, var(--paper) 86%, transparent);
+  backdrop-filter: blur(20px) saturate(1.5);
+  border-top: 1px solid var(--rule);
   padding-bottom: env(safe-area-inset-bottom);
 }
 
@@ -619,38 +829,66 @@ p {
   flex: 1;
   background: none;
   border: none;
-  padding: 9px 4px 10px;
+  padding: 7px 4px 8px;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 2px;
+  gap: 1px;
   color: var(--faint);
-  font-size: 10.5px;
+  font-size: 10px;
 }
 
 .tab--on {
-  color: var(--ink);
+  color: var(--proxy);
 }
 
-.tab__mark {
-  font-size: 17px;
-  line-height: 1.15;
+/* 選ばれている絵記号の後ろに、薄い藍の座を敷く */
+.tab__glyph {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 46px;
+  height: 30px;
+  border-radius: 999px;
+  transition: background 220ms ease-out;
+}
+
+.tab--on .tab__glyph {
+  background: var(--proxy-soft);
+}
+
+.tab__name {
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.icon {
+  width: 23px;
+  height: 23px;
+  display: block;
+  transition: transform 220ms ease-out;
+}
+
+.tab--on .icon {
+  transform: translateY(-0.5px) scale(1.04);
 }
 
 .tab__dot {
   position: absolute;
-  top: 6px;
-  left: 50%;
-  margin-left: 7px;
-  min-width: 15px;
-  height: 15px;
+  top: -1px;
+  right: 1px;
+  min-width: 16px;
+  height: 16px;
   border-radius: 999px;
   background: var(--warn);
   color: #fff;
   font-family: var(--mono);
   font-size: 9px;
-  line-height: 15px;
+  font-weight: 600;
+  line-height: 16px;
+  text-align: center;
   padding: 0 4px;
+  box-shadow: 0 1px 4px rgba(225, 29, 98, 0.4);
 }
 
 /* ================================================================= 覆い */
@@ -996,10 +1234,9 @@ p {
   display: flex;
   align-items: stretch;
   height: 28px;
-  border: 1px solid var(--rule-strong);
-  border-radius: var(--radius);
+  border-radius: 999px;
   overflow: hidden;
-  background: var(--sheet);
+  background: var(--field);
 }
 
 .ribbon__proxy {
@@ -1016,8 +1253,7 @@ p {
 
 .ribbon__proxyFill {
   height: 100%;
-  background: var(--proxy);
-  opacity: 0.85;
+  background: linear-gradient(90deg, var(--proxy), var(--proxy-2));
 }
 
 .ribbon__seam {
@@ -1034,8 +1270,7 @@ p {
 
 .ribbon__yoursFill {
   height: 100%;
-  background: var(--ink);
-  opacity: 0.9;
+  background: linear-gradient(90deg, var(--me), var(--me-2));
 }
 
 .ribbon__caption {
@@ -1117,9 +1352,14 @@ p {
 
 .chart__proxyLine {
   fill: none;
-  stroke-width: 1.8;
+  stroke: url(#ringGradient) var(--proxy);
+  stroke-width: 2.4;
   stroke-linecap: round;
-  opacity: 0.85;
+  filter: drop-shadow(0 1px 4px var(--proxy-glow));
+}
+
+.chart__proxyDot {
+  fill: var(--proxy);
 }
 
 .chart__seam {
@@ -1130,16 +1370,16 @@ p {
 .chart__seamDot {
   fill: var(--paper);
   stroke: var(--ink);
-  stroke-width: 1.5;
-}
-
-.chart__yoursLine {
-  stroke: var(--ink);
   stroke-width: 1.6;
 }
 
+.chart__yoursLine {
+  stroke: var(--me);
+  stroke-width: 2.2;
+}
+
 .chart__yoursDot {
-  fill: var(--ink);
+  fill: var(--me);
 }
 
 .chart__seamText {
@@ -1177,7 +1417,7 @@ p {
 }
 
 .chart__key--yours::before {
-  background: var(--ink);
+  background: var(--me);
 }
 
 /* ============================================================== 顔 */
@@ -1194,6 +1434,7 @@ p {
   inset: 0;
   width: 100%;
   height: 100%;
+  overflow: visible;
 }
 
 .avatar__rest {
@@ -1201,16 +1442,33 @@ p {
 }
 
 .avatar__proxy {
-  stroke: var(--proxy);
+  stroke: url(#ringGradient) var(--proxy);
+  filter: drop-shadow(0 0 3px var(--proxy-glow));
+  transition: stroke-dasharray 900ms linear;
 }
 
 .avatar__gained {
-  stroke: var(--ink);
+  stroke: var(--me);
 }
 
 .avatar__lost {
   stroke: var(--warn);
-  opacity: 0.55;
+  opacity: 0.6;
+}
+
+/* 動いているあいだ、環のまわりが息をする */
+.avatar--live .avatar__ring {
+  animation: breathe 2.4s ease-in-out infinite;
+}
+
+@keyframes breathe {
+  0%,
+  100% {
+    filter: drop-shadow(0 0 0 rgba(79, 70, 229, 0));
+  }
+  50% {
+    filter: drop-shadow(0 0 6px var(--proxy-glow));
+  }
 }
 
 .avatar__face {
@@ -1218,16 +1476,35 @@ p {
   place-items: center;
   border-radius: 50%;
   color: #fff;
-  font-weight: 600;
+  font-weight: 700;
   width: 100%;
   height: 100%;
   font-size: 15px;
+  box-shadow: inset 0 -6px 14px rgba(0, 0, 0, 0.13), inset 0 5px 10px rgba(255, 255, 255, 0.22);
 }
 
 .avatar--ringed .avatar__face {
-  width: 70%;
-  height: 70%;
-  font-size: 12px;
+  width: 72%;
+  height: 72%;
+  font-size: 12.5px;
+}
+
+/* 代理が動いている相手に付く印 */
+.avatar__mark {
+  position: absolute;
+  right: -3px;
+  bottom: -3px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 3px;
+  border-radius: 999px;
+  border: 2px solid var(--paper);
+  background: linear-gradient(135deg, var(--proxy-2), var(--proxy));
+  color: #fff;
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 13px;
+  text-align: center;
 }
 
 /* ============================================================== 判断 */
@@ -1451,21 +1728,36 @@ p {
  */
 .askcard {
   align-self: stretch;
-  border: 1px solid var(--proxy);
-  border-radius: var(--radius);
-  background: var(--proxy-soft);
-  padding: 12px 13px;
+  border-radius: var(--r-card);
+  background: var(--paper);
+  padding: 14px 15px;
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  margin: 4px 0;
+  gap: 9px;
+  margin: 6px 0;
+  box-shadow: 0 3px 16px var(--proxy-glow);
+  border-top: 3px solid transparent;
+  border-image: linear-gradient(90deg, var(--proxy-2), var(--proxy)) 1;
+  border-width: 3px 0 0;
+  border-style: solid;
 }
 
 .askcard__head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   font-family: var(--mono);
   font-size: 9.5px;
   letter-spacing: 0.14em;
   color: var(--proxy);
+}
+
+.askcard__head::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--proxy);
 }
 
 .askcard__text {
@@ -1476,29 +1768,38 @@ p {
 
 .askcard__btns {
   display: flex;
-  gap: 7px;
+  gap: 8px;
 }
 
 .askcard__btns .opt {
-  background: var(--paper);
+  background: var(--field);
+  border-color: transparent;
+  font-weight: 600;
+}
+
+.askcard__btns .opt:active {
+  background: var(--proxy-soft);
+  color: var(--proxy);
 }
 
 .askcard__done {
   font-size: 12.5px;
   color: var(--proxy);
+  font-weight: 600;
 }
 
 .askcard__auto {
   font-size: 12.5px;
   color: var(--warn);
+  font-weight: 600;
 }
 
 .chip-state--ask {
   color: #fff;
   background: var(--warn);
-  border-color: var(--warn);
-  padding: 1px 6px;
+  padding: 3px 8px;
   font-size: 9px;
+  box-shadow: 0 1px 6px rgba(225, 29, 98, 0.3);
 }
 
 .row__dormant {
@@ -1514,38 +1815,57 @@ p {
 /*
  * この画面が、この作品でいちばん短く言える形になる。
  *
- *   あなたが築いた 3　／　代理人が築いた 9
+ *   自分の友達 3　／　代理の友達 9
  *
  * 左の数字は動かない。右の数字だけが、眺めているあいだに増える。
  */
 .tally {
-  padding: 15px var(--pad) 16px;
-  border-bottom: 1px solid var(--rule);
+  position: relative;
+  margin: 13px var(--pad) 4px;
+  padding: 16px 17px 15px;
+  border-radius: var(--r-card);
+  background: var(--paper);
+  overflow: hidden;
+  box-shadow: 0 2px 14px rgba(23, 26, 33, 0.06);
+}
+
+/* 面に薄い格子を敷く。計器らしさが一枚入る */
+.tally::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image: radial-gradient(circle, var(--rule) 1px, transparent 1px);
+  background-size: 13px 13px;
+  opacity: 0.7;
+  pointer-events: none;
 }
 
 .tally__bar {
+  position: relative;
   display: flex;
-  height: 8px;
+  height: 10px;
   border-radius: 999px;
   overflow: hidden;
   background: var(--field);
 }
 
 .tally__mine {
-  background: var(--ink);
-  transition: flex-grow 900ms linear;
+  background: linear-gradient(90deg, var(--me), var(--me-2));
+  transition: flex-grow 800ms ease-out;
 }
 
 .tally__proxy {
-  background: var(--proxy);
-  transition: flex-grow 900ms linear;
+  background: linear-gradient(90deg, var(--proxy), var(--proxy-2));
+  box-shadow: 0 0 12px var(--proxy-glow);
+  transition: flex-grow 800ms ease-out;
 }
 
 .tally__rows {
+  position: relative;
   display: flex;
   justify-content: space-between;
   gap: 14px;
-  margin-top: 11px;
+  margin-top: 13px;
 }
 
 .tally__row {
@@ -1563,67 +1883,98 @@ p {
 }
 
 .tally__dot {
-  width: 8px;
-  height: 8px;
+  width: 9px;
+  height: 9px;
   border-radius: 50%;
 }
 
 .tally__dot--mine {
-  background: var(--ink);
+  background: var(--me);
 }
 
 .tally__dot--proxy {
   background: var(--proxy);
+  box-shadow: 0 0 0 3px var(--proxy-soft);
 }
 
 .tally__num {
   font-family: var(--mono);
-  font-size: 17px;
+  font-size: 20px;
+  font-weight: 600;
   font-variant-numeric: tabular-nums;
+  transition: color 300ms ease-out;
+}
+
+/* 増えている最中だけ色が乗る。差し替わるだけだと気づかない */
+.tally__num--moving {
+  color: var(--proxy);
+  text-shadow: 0 0 10px var(--proxy-glow);
 }
 
 .fgroup {
   display: flex;
   flex-direction: column;
+  margin: 0 var(--pad) 12px;
+  background: var(--paper);
+  border-radius: var(--r-card);
+  overflow: hidden;
+  box-shadow: 0 1px 8px rgba(23, 26, 33, 0.05);
 }
 
 .fgroup__head {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   gap: 8px;
-  padding: 19px var(--pad) 7px;
+  padding: 13px 15px 3px;
 }
 
 .fgroup__title {
   font-family: var(--mono);
   font-size: 10px;
   letter-spacing: 0.14em;
-  color: var(--muted);
+  color: var(--proxy);
 }
 
 .fgroup__count {
   margin-left: auto;
+  min-width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  background: var(--field);
+  color: var(--ink-dim);
   font-family: var(--mono);
   font-size: 10px;
-  color: var(--faint);
+  line-height: 18px;
+  text-align: center;
+  padding: 0 5px;
 }
 
 .fgroup__note {
-  padding: 0 var(--pad) 9px;
+  padding: 0 15px 6px;
   font-size: 11.5px;
   color: var(--faint);
 }
 
 .friend {
+  position: relative;
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 13px;
   width: 100%;
-  padding: 11px var(--pad);
+  padding: 11px 15px 12px;
   background: transparent;
   border: none;
-  border-bottom: 1px solid var(--rule);
   text-align: left;
+}
+
+.friend + .friend::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 70px;
+  right: 0;
+  height: 1px;
+  background: var(--rule);
 }
 
 .friend:active {
@@ -1643,7 +1994,7 @@ p {
 
 .friend__name {
   font-size: 15px;
-  font-weight: 600;
+  font-weight: 700;
 }
 
 .friend__top .chip-state {
@@ -1659,17 +2010,17 @@ p {
   white-space: nowrap;
 }
 
-/* 交流期間の進み具合。閉じたら引き継げる */
+/* やり取りの進み具合。閉じたら引き継げる */
 .friend__progress {
   display: flex;
   align-items: center;
   gap: 9px;
-  margin-top: 7px;
+  margin-top: 8px;
 }
 
 .friend__bar {
   flex: 1;
-  height: 3px;
+  height: 4px;
   border-radius: 999px;
   background: var(--field);
   overflow: hidden;
@@ -1678,41 +2029,28 @@ p {
 .friend__fill {
   display: block;
   height: 100%;
-  background: var(--proxy);
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--proxy), var(--proxy-2));
+  box-shadow: 0 0 8px var(--proxy-glow);
   transition: width 900ms linear;
 }
 
 .friend__days {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
   font-family: var(--mono);
   font-size: 9.5px;
-  color: var(--faint);
+  color: var(--muted);
   font-variant-numeric: tabular-nums;
 }
 
-.chip-state--proxy {
-  color: var(--proxy);
-  border-color: color-mix(in srgb, var(--proxy) 45%, transparent);
-}
-
-.chip-state--mine {
-  color: var(--ink-dim);
-}
-
-/* 顔の右下に付く「代」。文章を読まずに見分けられるようにするための印 */
-.avatar__mark {
+/* 画面の外に置く定義だけの図。場所を取らせない */
+.defs {
   position: absolute;
-  right: -3px;
-  bottom: -3px;
-  min-width: 15px;
-  height: 15px;
-  padding: 0 3px;
-  border-radius: 999px;
-  border: 1.5px solid var(--paper);
-  background: var(--proxy);
-  color: #fff;
-  font-size: 9px;
-  line-height: 12px;
-  text-align: center;
+  width: 0;
+  height: 0;
+  overflow: hidden;
 }
 
 /* ======================================================= 出たての一通 */

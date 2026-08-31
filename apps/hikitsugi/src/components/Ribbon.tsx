@@ -2,8 +2,8 @@
  * 期間の帯。全画面の上端に常に出す。
  *
  * この作品でいちばん説明が要る部分——「関係は誰かが数週間から数か月かけて
- * 築いた」「あなたが受け取ったのは、その後ろの短い区間だけ」——を、
- * 文章ではなく**幅の比**で見せる。茶色が代理人、黒があなた。
+ * やり取りした」「あなたが受け取ったのは、その後ろの短い区間だけ」——を、
+ * 文章ではなく**幅の比**で見せる。藍が代理、緑があなた。
  *
  * 縮尺の取り方は lib/timeline.ts に切り出してある（年表と同じ割り当てを
  * 使わないと、二つの図が違うことを言い出す）。
@@ -33,7 +33,7 @@ export function Ribbon({
       <div className="ribbon__track">
         <div className="ribbon__proxy" style={{ flexBasis: `${share * 100}%` }}>
           <div className="ribbon__proxyFill" style={{ width: `${proxyRatio * 100}%` }} />
-          <span className="ribbon__caption">代理人 {proxyDays} 日</span>
+          <span className="ribbon__caption">代理 {proxyDays} 日</span>
         </div>
         <div className="ribbon__seam" aria-hidden="true" />
         <div className="ribbon__yours">
@@ -44,7 +44,7 @@ export function Ribbon({
         </div>
       </div>
       <div className="ribbon__marks">
-        <span>代理人が築いた期間</span>
+        <span>代理がやり取りした期間</span>
         <span className="ribbon__seamLabel">引継</span>
         <span>あなたの期間</span>
       </div>

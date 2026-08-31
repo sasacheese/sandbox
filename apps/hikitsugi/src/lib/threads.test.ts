@@ -161,7 +161,7 @@ test('引き継ぐと、仕切りのあとに人間の区間が続く', () => {
   const bubbles = bubblesOf(thread, new Date(at.getTime() + 3 * thread.gapMs));
   const divider = bubbles.find((b) => b.divider);
   assert.ok(divider, '仕切りが無い');
-  assert.equal(divider.divider, 'ここから、あなたが応対します');
+  assert.equal(divider.divider, 'ここから自分で返事をします');
   const mine = bubbles.find((b) => b.id === 'me-1');
   assert.ok(mine);
   assert.equal(mine.byAgent, false);

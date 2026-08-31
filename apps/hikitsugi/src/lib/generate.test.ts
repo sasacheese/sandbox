@@ -140,7 +140,7 @@ test('触れられたくない話題が、相手の秘密に応じる材料と�
   const handover = buildHandover(first(), intake({ avoid: '実家のこと' }));
   const leak = handover?.leaked.find((line) => line.includes('実家のこと'));
   assert.ok(leak);
-  assert.match(leak, /触れられたくない話題として申告/);
+  assert.match(leak, /触れられたくない話題として書かれたもの/);
 });
 
 test('自分のトークからは引継書が出ない', () => {

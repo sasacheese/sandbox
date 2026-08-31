@@ -18,7 +18,7 @@ export function Settings() {
         <section className="section">
           <div className="section__head">
             <span className="section__no">01</span>
-            <span className="section__title">一巡の長さ</span>
+            <span className="section__title">一周の長さ</span>
           </div>
           <div className="choices">
             {LOOP_PRESETS.map((preset) => (
@@ -33,8 +33,8 @@ export function Settings() {
             ))}
           </div>
           <span className="sub">
-            代理人のトークは九本ぶん用意してあり、順に現れて順に満了します。出し切ると最初へ戻り、引き継いだ関係も答えた確認も残りません。
-            短くするほど一通あたりの間隔が詰まります。変えると一巡目の頭から始まります。
+            代理のトークは九本あり、順に出てきて順に終わります。全部出し切ると最初に戻り、引き継いだ相手も、答えた確認も残りません。
+            短くするほど一通ごとの間隔が詰まります。変えると一周目の最初から始まります。
           </span>
         </section>
 
@@ -47,7 +47,7 @@ export function Settings() {
             <div className="kv">
               <span className="kv__key">いまの位置</span>
               <span className="kv__value num">
-                {loop.index + 1} 巡目 · {Math.floor(loop.phase / 60_000)} / {Math.round(loop.total / 60_000)} 分
+                {loop.index + 1} 周目 · {Math.floor(loop.phase / 60_000)} / {Math.round(loop.total / 60_000)} 分
               </span>
             </div>
             <div className="kv">
@@ -55,7 +55,7 @@ export function Settings() {
               <span className="kv__value">{intake?.name ?? '—'}</span>
             </div>
             <div className="kv">
-              <span className="kv__key">引き継いだ関係</span>
+              <span className="kv__key">引き継いだ相手</span>
               <span className="kv__value num">{inherited} 件</span>
             </div>
             <div className="kv">
@@ -63,7 +63,7 @@ export function Settings() {
               <span className="kv__value num">{selfSent} 件</span>
             </div>
             <div className="kv">
-              <span className="kv__key">代理人に任せた返信</span>
+              <span className="kv__key">代理にまかせた返信</span>
               <span className="kv__value num">{agentSent} 件</span>
             </div>
             <div className="kv">
@@ -78,7 +78,7 @@ export function Settings() {
             <span className="section__no">03</span>
             <span className="section__title">解約</span>
           </div>
-          <p className="sub">本サービスに解約はありません。記録の消去のみ可能です。消去しても、相手方の記憶は残ります。</p>
+          <p className="sub">このサービスに解約はありません。記録を消すことだけができます。消しても、相手の記憶は残ります。</p>
           <button className="btn btn--ghost" type="button" onClick={() => void reset()}>
             すべて消して最初から
           </button>

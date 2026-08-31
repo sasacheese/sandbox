@@ -1,6 +1,6 @@
 import { closenessLabel, listTime } from '../lib/format.ts';
 import { effectiveCloseness } from '../lib/closeness.ts';
-import { bubblesOf, daysSinceInherit, storyDay, isReady, pendingAsksOf, previewOf, unreadOf } from '../lib/threads.ts';
+import { bubblesOf, daysSinceInherit, isLive, isReady, pendingAsksOf, previewOf, storyDay, unreadOf } from '../lib/threads.ts';
 import type { Thread } from '../lib/types.ts';
 import { useStore } from '../store.tsx';
 import { Avatar } from './Avatar.tsx';
@@ -21,20 +21,21 @@ export function ChatList({ kind, onOpen }: { kind: 'mine' | 'proxy'; onOpen: (th
       <header className="listhead">
         <span className="listhead__title">{kind === 'mine' ? 'トーク' : '代理'}</span>
         <span className="listhead__note">
-          {kind === 'mine' ? `${threads.length} 件` : store.readyCount > 0 ? `${store.readyCount} 件が引き継ぎ可能` : `${threads.length} 件`}
+          {kind === 'proxy' ? <Live count={store.proxies.filter((t) => isLive(t, store.now)).length} /> : null}
+          {kind === 'mine' ? `${threads.length} 件` : store.readyCount > 0 ? `${store.readyCount} 件引き継げます` : `${threads.length} 件`}
         </span>
       </header>
 
       {kind === 'proxy' ? (
         <p className="listhead__lede">
-          あなたの代理人が応対しています。交流が満了したものから引き継げます。相手が引き継ぐかどうかは、申し出るまで分かりません。
+          代理があなたの代わりにやり取りしています。やり取りが終わったものから引き継げます。相手が引き継ぐかどうかは、申し出るまで分かりません。
         </p>
       ) : null}
 
       <div className="rows">
         {threads.length === 0 ? (
           <div className="empty">
-            {kind === 'mine' ? 'トークはまだありません。' : '代理人のトークはありません。'}
+            {kind === 'mine' ? 'トークはまだありません。' : '代理のトークはありません。'}
           </div>
         ) : null}
 
@@ -43,6 +44,17 @@ export function ChatList({ kind, onOpen }: { kind: 'mine' | 'proxy'; onOpen: (th
         ))}
       </div>
     </>
+  );
+}
+
+/** いま動いている本数。数字の隣で点が脈打つ。 */
+function Live({ count }: { count: number }) {
+  if (count === 0) return null;
+  return (
+    <span className="live">
+      <span className="live__dot" aria-hidden="true" />
+      {count} 件やり取り中
+    </span>
   );
 }
 
@@ -62,7 +74,7 @@ function Row({ thread, onOpen }: { thread: Thread; onOpen: (threadId: string) =>
   return (
     <button type="button" className={`row${closed ? ' row--closed' : ''}${fresh ? ' row--fresh' : ''}`} onClick={() => onOpen(thread.id)}>
       {thread.kind === 'proxy' ? (
-        <Avatar name={thread.title} inherited={base} current={current} />
+        <Avatar name={thread.title} inherited={base} current={current} live={isLive(thread, now)} />
       ) : (
         <Avatar name={thread.title} {...(thread.decision === 'inherit' ? { inherited: base, current } : {})} />
       )}
@@ -78,7 +90,7 @@ function Row({ thread, onOpen }: { thread: Thread; onOpen: (threadId: string) =>
         </div>
         <div className="row__preview row__preview--state">
           <State thread={thread} closeness={current} />
-          {handover && !thread.decision ? <span className="row__dormant">沈黙 {handover.dormant}</span> : null}
+          {handover && !thread.decision ? <span className="row__dormant">連絡なし {handover.dormant}</span> : null}
           {pending > 0 ? <span className="chip-state chip-state--ask">確認 {pending}</span> : null}
         </div>
       </div>
@@ -93,12 +105,12 @@ function State({ thread, closeness }: { thread: Thread; closeness: number }) {
   if (thread.decision === 'inherit') {
     return <span className="chip-state">{closeness} · {closenessLabel(closeness)}</span>;
   }
-  if (thread.decision === 'agent_only') return <span className="chip-state chip-state--closed">代理人が継続中</span>;
-  if (thread.decision === 'end') return <span className="chip-state chip-state--closed">破棄</span>;
-  if (isReady(thread, now)) return <span className="chip-state chip-state--ready">引き継ぎ可能</span>;
+  if (thread.decision === 'agent_only') return <span className="chip-state chip-state--closed">代理が続けています</span>;
+  if (thread.decision === 'end') return <span className="chip-state chip-state--closed">終わり</span>;
+  if (isReady(thread, now)) return <span className="chip-state chip-state--ready">引き継げます</span>;
   return (
     <span className="chip-state">
-      交流中 {storyDay(thread, now)} / {thread.days} 日
+      やり取り {storyDay(thread, now)} / {thread.days} 日
     </span>
   );
 }

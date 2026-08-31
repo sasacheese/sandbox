@@ -12,7 +12,7 @@ export function DayGrid({ days, filled, marks }: { days: number; filled: number;
   }
 
   return (
-    <div className="daygrid" role="img" aria-label={`交流期間 ${days} 日のうち ${filled} 日が経過`}>
+    <div className="daygrid" role="img" aria-label={`やり取りした ${days} 日のうち ${filled} 日`}>
       {rows.map((row) => (
         <div className="daygrid__row" key={row[0]}>
           {row.map((day) => (

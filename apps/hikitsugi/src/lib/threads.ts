@@ -61,6 +61,27 @@ export function isReady(thread: Thread, now: Date): boolean {
   return postsShown(thread, now) >= thread.posts;
 }
 
+/** いまやり取りが動いているか（残りがあり、まだ判断していない）。 */
+export function isLive(thread: Thread, now: Date): boolean {
+  if (thread.kind !== 'proxy' || thread.decision) return false;
+  return postsShown(thread, now) < thread.posts;
+}
+
+/**
+ * 次の一通が、どちら側から、いつ届くか。
+ *
+ * 届く直前に「…」を出すために使う。**次に喋るのがどちらか分かっている**のは
+ * 台本があるからで、そこは隠さずに演出へ回す。
+ */
+export function nextPost(thread: Thread, now: Date): { side: 'left' | 'right'; at: number } | null {
+  const seed = COUNTERPARTS.find((c) => c.id === thread.seedId);
+  if (!seed || !isLive(thread, now)) return null;
+  const shown = postsShown(thread, now);
+  const item = itemsOf(seed, thread, thread.days ?? SCRIPT_SCALE).future[shown];
+  if (!item) return null;
+  return { side: item.make(0).side, at: new Date(thread.createdAt).getTime() + (shown + 1) * thread.gapMs };
+}
+
 /**
  * いま何日目まで進んで見えるか。
  *
@@ -278,7 +299,7 @@ function proxyBubbles(thread: Thread, now: Date): Bubble[] {
   }));
 
   const after = [...human, ...mine].sort((a, b) => (a.at < b.at ? -1 : 1));
-  if (after[0]) after[0] = { ...after[0], divider: 'ここから、あなたが応対します' };
+  if (after[0]) after[0] = { ...after[0], divider: 'ここから自分で返事をします' };
   return [...out, ...after];
 }
 

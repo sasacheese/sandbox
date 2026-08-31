@@ -10,10 +10,10 @@ import { useStore } from '../store.tsx';
  * そうは書いていない。
  */
 const TERMS: readonly string[] = [
-  '代理人は、あなたの名前で、あなたと接点のある人物の代理人と交流します。相手方には代理人が介在した旨を通知しません。',
-  '交流中の発言・打ち明け・約束は、すべてあなたの行為として記録されます。',
-  '交流の相手は順次追加されます。追加の可否および人数について、事前の通知はいたしません。',
-  'ご記入いただいた情報が少ない場合、代理人が不足を補います。補われた内容は引継書に明記します。',
+  '代理は、あなたの名前で、あなたと接点のある人の代理とやり取りします。相手には、代理が代わりに話していることを伝えません。',
+  'やり取りの中の発言・打ち明け話・約束は、すべてあなたがしたこととして記録されます。',
+  'やり取りする相手は順に増えます。誰が何人増えるかは、前もってお知らせしません。',
+  '書かれた内容が少ない場合、代理が足りないぶんを埋めます。埋めた内容は引継書に書き出します。',
 ];
 
 export function Intake() {
@@ -41,12 +41,12 @@ export function Intake() {
         先にできています。
       </div>
       <p className="doc" style={{ fontSize: '14.5px' }}>
-        あなたと接点はあるが、この数年やり取りのない相手が見つかっています。あなたの代理人が、その人たちの代理人と交流します。
-        十分に親しくなったものから、引き継げます。
+        あなたと接点はあるけれど、この数年やり取りのない相手が見つかっています。あなたの代理が、その人たちの代理とやり取りします。
+        十分に親しくなった相手から、引き継げます。
       </p>
 
       <div className="field">
-        <span className="field__key">お名前（代理人が名乗ります）</span>
+        <span className="field__key">お名前（代理がこの名前で話します）</span>
         <input className="input" value={name} onChange={(e) => setName(e.target.value.slice(0, 16))} autoComplete="off" />
       </div>
       <div className="field">
@@ -63,12 +63,12 @@ export function Intake() {
       </div>
 
       <div className="field">
-        <span className="field__key">代理人の寄せ方</span>
+        <span className="field__key">代理の性格</span>
         <input className="slider" type="range" min={0} max={100} value={persona} onChange={(e) => setPersona(Number(e.target.value))} />
         <div className="slider__ends">
-          <span>本人らしさ</span>
+          <span>本人に近い</span>
           <span className="num">{persona}</span>
-          <span>好かれやすさ</span>
+          <span>好かれやすい</span>
         </div>
       </div>
 
@@ -82,7 +82,7 @@ export function Intake() {
       </div>
 
       <button className="btn" type="submit" disabled={!ready}>
-        代理人を送り出す
+        代理を送り出す
         <span className="btn__hint">DISPATCH</span>
       </button>
     </form>
