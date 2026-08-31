@@ -58,7 +58,7 @@ export function HandoverSheet({ threadId, onClose }: { threadId: string; onClose
             </div>
 
             <Chart
-              people={[{ id: handover.threadId, name: handover.alias, metDay: 1, inherited: handover.closeness, current: handover.closeness }]}
+              people={[{ id: handover.threadId, name: handover.name, metDay: 1, inherited: handover.closeness, current: handover.closeness }]}
               proxyDays={handover.days}
               proxyFilled={handover.days}
               elapsed={0}
@@ -68,7 +68,15 @@ export function HandoverSheet({ threadId, onClose }: { threadId: string; onClose
             <div className="cover__rows">
               <div className="kv">
                 <span className="kv__key">相手</span>
-                <span className="kv__value">{handover.alias}（氏名は開示されていません）</span>
+                <span className="kv__value">{handover.name}</span>
+              </div>
+              <div className="kv">
+                <span className="kv__key">接点</span>
+                <span className="kv__value">{handover.short}</span>
+              </div>
+              <div className="kv">
+                <span className="kv__key">本人同士の沈黙</span>
+                <span className="kv__value">{handover.dormant}</span>
               </div>
               <div className="kv">
                 <span className="kv__key">交流期間</span>
@@ -111,15 +119,15 @@ export function HandoverSheet({ threadId, onClose }: { threadId: string; onClose
             </div>
             <article className="person">
               <div className="person__head">
-                <Avatar name={handover.alias} inherited={handover.closeness} current={handover.closeness} />
-                <span className="person__name">{handover.alias}</span>
+                <Avatar name={handover.name} inherited={handover.closeness} current={handover.closeness} />
+                <span className="person__name">{handover.name}</span>
                 <span className="person__calls">
                   あなたの呼び方
                   <strong>{handover.calls}</strong>
                 </span>
               </div>
 
-              <p className="sub">接点は、引き継ぎ後に開示されます。</p>
+              <p className="sub">{handover.relation}</p>
 
               <div className="meter">
                 <div className="meter__bar">
@@ -213,13 +221,13 @@ export function HandoverSheet({ threadId, onClose }: { threadId: string; onClose
             <div className="decisions">
               <Choice
                 title="この友情を引き継ぐ"
-                body="以後はあなたが応対します。トークが「トーク」へ移ります。氏名は、相手も引き継いだ場合にのみ開示されます。"
+                body="以後はあなたが応対します。トークが「トーク」へ移ります。相手側の人間が応対するかどうかは、確定してから分かります。"
                 on={confirm === 'inherit'}
                 onClick={() => setConfirm('inherit')}
               />
               <Choice
                 title="代理人だけに続けさせる"
-                body="あなたは受け取りません。氏名は開示されません。週に一度、報告だけが届きます。"
+                body="あなたは受け取りません。週に一度、代理人の報告だけがそのトークに届きます。"
                 on={confirm === 'agent_only'}
                 onClick={() => setConfirm('agent_only')}
               />
@@ -315,7 +323,10 @@ function ResultSheet({ handover, decision, onClose }: { handover: Handover; deci
                   </p>
                 </div>
               </div>
-              <p className="sub">双方が引き継ぎを希望しました。以後、このやり取りは人間同士のものになります。</p>
+              <p className="sub">
+                双方が引き継ぎを希望しました。以後、このやり取りは人間同士のものになります。本人同士の沈黙は
+                {handover.dormant}でした。
+              </p>
             </section>
           ) : null}
 
@@ -325,7 +336,7 @@ function ResultSheet({ handover, decision, onClose }: { handover: Handover; deci
                 相手方の人間は応対しません。以後、相手側の発言はすべて相手方の代理人によるものです。この扱いは変更できません。
               </div>
               <p className="doc">
-                氏名は開示されません。あなたはこれから、{handover.alias} の代理人と話します。相手の人間は、この関係に戻ってきません。
+                あなたはこれから、{handover.name} の代理人と話します。**{handover.name}** 本人は、この関係に一度も出てきていません。
               </p>
             </>
           ) : null}
@@ -334,7 +345,7 @@ function ResultSheet({ handover, decision, onClose }: { handover: Handover; deci
             <>
               <div className="notice">相手方の人間は、この関係の引き継ぎを希望しませんでした。理由は共有されていません。</div>
               <p className="doc">
-                氏名は開示されません。トークは残りますが、相手からの返信はありません。あなたの代理人は、まだ続けることを希望しています。
+                トークは残りますが、{handover.name} からの返信はありません。あなたの代理人は、まだ続けることを希望しています。
               </p>
             </>
           ) : null}
@@ -342,7 +353,7 @@ function ResultSheet({ handover, decision, onClose }: { handover: Handover; deci
           {decision !== 'inherit' ? (
             <p className="doc">
               {decision === 'agent_only'
-                ? 'あなたはこの関係の当事者になりませんでした。氏名は開示されません。週に一度、代理人からの報告だけが届きます。'
+                ? 'あなたはこの関係の当事者になりませんでした。週に一度、代理人からの報告だけが届きます。'
                 : 'この関係は破棄されました。相手には通知されません。あなたの代理人は、当面のあいだ相手を待ち続けます。'}
             </p>
           ) : null}

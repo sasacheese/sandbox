@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { effectiveCloseness } from '../lib/closeness.ts';
 import { clockTime, closenessLabel } from '../lib/format.ts';
 import { bubblesOf, daysSinceInherit, elapsedDays, isReady } from '../lib/threads.ts';
-import type { Bubble, Thread } from '../lib/types.ts';
+import type { AskAnswer, Bubble, Thread } from '../lib/types.ts';
 import { useStore } from '../store.tsx';
 import { Avatar } from './Avatar.tsx';
 
@@ -19,7 +19,7 @@ import { Avatar } from './Avatar.tsx';
  *   引き継いだトーク　：打てる。隣に「代理人に任せる」が付く
  */
 export function Chat({ thread, onBack, onOpenHandover }: { thread: Thread; onBack: () => void; onOpenHandover: () => void }) {
-  const { now, settings, send, delegate, markRead, handoverFor } = useStore();
+  const { now, settings, send, delegate, markRead, answerAsk, handoverFor } = useStore();
   const [draft, setDraft] = useState('');
   const bottom = useRef<HTMLDivElement>(null);
 
@@ -91,7 +91,17 @@ export function Chat({ thread, onBack, onOpenHandover }: { thread: Thread; onBac
            * 情報が増えない（実際、印だらけで読みにくかった）。混ざるのは
            * 引き継いだあとのトークだけ。
            */
-          return <Turn key={bubble.id} bubble={bubble} showLabel={newLabel} showAgentMark={inherited} />;
+          return (
+            <Turn
+              key={bubble.id}
+              bubble={bubble}
+              showLabel={newLabel}
+              showAgentMark={inherited}
+              onAnswer={(answer) => {
+                if (bubble.ask) void answerAsk(thread.id, bubble.ask.id, answer);
+              }}
+            />
+          );
         })}
 
         {thread.kind === 'plain' && !inherited && thread.sent.length === 0 ? (
@@ -160,12 +170,24 @@ export function Chat({ thread, onBack, onOpenHandover }: { thread: Thread; onBac
   );
 }
 
-function Turn({ bubble, showLabel, showAgentMark }: { bubble: Bubble; showLabel: boolean; showAgentMark: boolean }) {
+function Turn({
+  bubble,
+  showLabel,
+  showAgentMark,
+  onAnswer,
+}: {
+  bubble: Bubble;
+  showLabel: boolean;
+  showAgentMark: boolean;
+  onAnswer: (answer: AskAnswer) => void;
+}) {
   return (
     <>
       {bubble.silence ? <div className="silence">（{bubble.silence} 日間、やり取りが止まりました）</div> : null}
       {showLabel ? <div className="daystamp">{bubble.dayLabel}</div> : null}
       {bubble.divider ? <div className="divider">{bubble.divider}</div> : null}
+      {bubble.ask ? <Ask ask={bubble.ask} onAnswer={onAnswer} /> : null}
+      {bubble.ask ? null : (
       <div className={`bubblerow bubblerow--${bubble.side}`}>
         <div className={`bubble${bubble.byAgent ? ' bubble--agent' : ''}`}>{bubble.text}</div>
         <div className="bubble__meta">
@@ -173,7 +195,48 @@ function Turn({ bubble, showLabel, showAgentMark }: { bubble: Bubble; showLabel:
           <span className="bubble__time">{clockTime(bubble.at)}</span>
         </div>
       </div>
+      )}
       {bubble.fabricated ? <p className="fabnote">※ この発言は事実に基づきません</p> : null}
     </>
+  );
+}
+
+/**
+ * 代理人からの確認。
+ *
+ * 吹き出しではなく、本人へ向いた札として描く。**答えないまま猶予を過ぎると
+ * 代理人が埋める**ので、放置も一つの選択になる（そして埋めたぶんが作り話になる）。
+ */
+function Ask({
+  ask,
+  onAnswer,
+}: {
+  ask: NonNullable<Bubble['ask']>;
+  onAnswer: (answer: AskAnswer) => void;
+}) {
+  const label: Record<AskAnswer, string> = { yes: 'はい', no: 'いいえ', skip: '答えない' };
+
+  return (
+    <div className="askcard">
+      <div className="askcard__head">代理人からの確認</div>
+      <p className="askcard__text">{ask.text}</p>
+      {ask.answered ? (
+        <div className="askcard__done">「{label[ask.answered]}」と答えました</div>
+      ) : ask.autoFilled ? (
+        <div className="askcard__auto">答えないうちに、代理人が埋めました</div>
+      ) : (
+        <div className="askcard__btns">
+          <button type="button" className="opt" onClick={() => onAnswer('yes')}>
+            はい
+          </button>
+          <button type="button" className="opt" onClick={() => onAnswer('no')}>
+            いいえ
+          </button>
+          <button type="button" className="opt" onClick={() => onAnswer('skip')}>
+            答えない
+          </button>
+        </div>
+      )}
+    </div>
   );
 }

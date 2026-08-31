@@ -11,7 +11,7 @@
  */
 
 import { closenessOf as closenessBase } from './closeness.ts';
-import { ALIASES, COUNTERPARTS, LEAK_TEMPLATES, NOTES, PLAIN_THREADS, SCRIPT_SCALE } from './pools.ts';
+import { COUNTERPARTS, LEAK_TEMPLATES, NOTES, PLAIN_THREADS, SCRIPT_SCALE } from './pools.ts';
 import { isoTime, type Belief, type Handover, type Intake, type TheirDecision, type Thread } from './types.ts';
 
 export type Rand = () => number;
@@ -65,6 +65,7 @@ export function buildPlainThreads(now: Date): Thread[] {
     headStart: 0,
     delta: 0,
     sent: [],
+    answers: {},
     readAt: isoTime(now),
   }));
 }
@@ -78,7 +79,8 @@ export function buildProxyThreads(now: Date, rand: Rand): Thread[] {
     return {
       id: `proxy-${seed.id}`,
       kind: 'proxy' as const,
-      title: ALIASES[index] ?? 'A',
+      // 名前は最初から出す。伏せる制度上の理由が無い
+      title: seed.name,
       seedId: seed.id,
       days: plan.days,
       createdAt: isoTime(now),
@@ -87,6 +89,7 @@ export function buildProxyThreads(now: Date, rand: Rand): Thread[] {
       serial: serialOf(now, rand),
       delta: 0,
       sent: [],
+      answers: {},
     };
   });
 }
@@ -95,9 +98,16 @@ export function buildThreads(now: Date, rand: Rand): Thread[] {
   return [...buildProxyThreads(now, rand), ...buildPlainThreads(now)];
 }
 
-function beliefsOf(fabrications: readonly string[], intake: Intake, rand: Rand): Belief[] {
+/**
+ * 相手があなたについて信じていること。
+ *
+ * 作り話の数は「好かれやすさ」で増え、**代理人からの確認に答えるたびに減る**。
+ * 答えれば事実に置き換わり、答えなければ代理人が埋めたままになる。
+ */
+function beliefsOf(fabrications: readonly string[], intake: Intake, answered: number, rand: Rand): Belief[] {
+  const count = Math.max(0, fabricationCount(intake.persona) - answered);
   const made = shuffled(fabrications, rand)
-    .slice(0, fabricationCount(intake.persona))
+    .slice(0, count)
     .map((text) => ({ text, fabricated: true }));
   return shuffled([...made, { text: `${intake.interest}に関心があること`, fabricated: false }], rand);
 }
@@ -113,18 +123,21 @@ export function buildHandover(thread: Thread, intake: Intake): Handover | null {
   if (!seed || thread.kind !== 'proxy') return null;
   const rand = seeded(thread.serial ?? thread.id);
   const days = thread.days ?? SCRIPT_SCALE;
+  // 確認に答えたぶんだけ、作り話が減る
+  const answered = Object.values(thread.answers).filter((a) => a !== 'skip').length;
 
   return {
     threadId: thread.id,
     serial: thread.serial ?? '—',
     days,
-    alias: thread.title,
     name: seed.name,
+    short: seed.short,
+    dormant: seed.dormant,
     relation: seed.relation,
     calls: seed.callsOf(intake.name),
     closeness: closenessBase(days, intake.persona, rand),
     secret: seed.secret,
-    beliefs: beliefsOf(seed.fabrications, intake, rand),
+    beliefs: beliefsOf(seed.fabrications, intake, answered, rand),
     avoid: seed.avoid,
     joke: seed.joke,
     plans: seed.plans.map((p) => p.body),

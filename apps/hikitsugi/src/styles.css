@@ -20,14 +20,16 @@
 :root {
   color-scheme: light;
 
-  --paper: #f2efe8;
+  /* 地は白。吹き出しと書類が地から浮くよう、面の色を一段用意する */
+  --paper: #ffffff;
   --sheet: #faf8f4;
+  --field: #f4f1ea;
   --ink: #2b2721;
   --ink-dim: #57514a;
   --muted: #857e75;
   --faint: #b4ada3;
-  --rule: #ddd6c9;
-  --rule-strong: #c3baa9;
+  --rule: #e6e0d3;
+  --rule-strong: #cdc4b3;
 
   --proxy: #8f6a3d;
   --proxy-soft: #f3ead9;
@@ -203,6 +205,16 @@ p {
   align-items: center;
   gap: 6px;
   margin-top: 1px;
+  min-width: 0;
+}
+
+/* 三行目。状態・沈黙の長さ・未回答の確認。詰まったら確認だけ右へ寄せる */
+.row__preview--state {
+  gap: 8px;
+}
+
+.row__preview--state .chip-state--ask {
+  margin-left: auto;
 }
 
 .row__text {
@@ -418,7 +430,8 @@ p {
   line-height: 1.7;
   white-space: pre-wrap;
   word-break: break-word;
-  background: #fff;
+  /* 地が白なので、相手の吹き出しは薄い面で塗る */
+  background: var(--field);
   border: 1px solid var(--rule);
 }
 
@@ -428,8 +441,8 @@ p {
 
 .bubblerow--right .bubble {
   border-top-right-radius: 5px;
-  background: #e7e2d6;
-  border-color: #dcd5c6;
+  background: #e8e3d6;
+  border-color: #ddd6c6;
 }
 
 /*
@@ -445,7 +458,7 @@ p {
 }
 
 .bubblerow--left .bubble--agent {
-  background: #fff;
+  background: var(--sheet);
   border-color: var(--rule);
   border-left: 3px solid var(--proxy);
   padding-left: 11px;
@@ -514,7 +527,7 @@ p {
   min-height: 38px;
   max-height: 120px;
   padding: 9px 13px;
-  background: #fff;
+  background: var(--field);
   border: 1px solid var(--rule-strong);
   border-radius: 19px;
   outline: none;
@@ -1238,7 +1251,7 @@ p {
 
 .decision--on {
   border-color: var(--ink);
-  background: #fff;
+  background: var(--field);
 }
 
 .decision__title {
@@ -1352,7 +1365,7 @@ p {
 .input {
   width: 100%;
   padding: 11px 12px;
-  background: #fff;
+  background: var(--field);
   border: 1px solid var(--rule-strong);
   border-radius: var(--radius);
   outline: none;
@@ -1428,4 +1441,73 @@ p {
   .reveal {
     animation: none;
   }
+}
+
+/* ======================================================= 代理人からの確認 */
+
+/*
+ * 吹き出しではなく、本人へ向いた札として描く。会話の流れの中に、
+ * **本人に宛てられた一枚だけ**が挟まる形にしたい。
+ */
+.askcard {
+  align-self: stretch;
+  border: 1px solid var(--proxy);
+  border-radius: var(--radius);
+  background: var(--proxy-soft);
+  padding: 12px 13px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 4px 0;
+}
+
+.askcard__head {
+  font-family: var(--mono);
+  font-size: 9.5px;
+  letter-spacing: 0.14em;
+  color: var(--proxy);
+}
+
+.askcard__text {
+  font-family: var(--serif);
+  font-size: 15px;
+  line-height: 1.85;
+}
+
+.askcard__btns {
+  display: flex;
+  gap: 7px;
+}
+
+.askcard__btns .opt {
+  background: var(--paper);
+}
+
+.askcard__done {
+  font-size: 12.5px;
+  color: var(--proxy);
+}
+
+.askcard__auto {
+  font-size: 12.5px;
+  color: var(--warn);
+}
+
+.chip-state--ask {
+  color: #fff;
+  background: var(--warn);
+  border-color: var(--warn);
+}
+
+.row__dormant {
+  font-size: 11px;
+  color: var(--faint);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.chip-state--ask {
+  padding: 1px 6px;
+  font-size: 9px;
 }

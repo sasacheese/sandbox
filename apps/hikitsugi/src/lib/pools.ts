@@ -15,9 +15,6 @@
 
 export const SERVICE = '関係引継サービス';
 
-/** 引き継ぐ前の相手の呼び名。伏せたまま並べるので、順に振るだけ。 */
-export const ALIASES = ['A', 'B', 'C', 'D'] as const;
-
 /** ログの日付は 90 日を基準に書いてあり、選ばれた期間へ縮めて使う。 */
 export const SCRIPT_SCALE = 90;
 
@@ -30,10 +27,34 @@ export type ScriptLine = {
   silence?: number;
 };
 
+/**
+ * 代理人からの確認。
+ *
+ * 代理人は本人の最新情報を持っていない。持っていないまま喋ると作り話になる
+ * ので、ときどき本人へ訊いてくる。**答えなければ、代理人が埋める。**
+ * 自分らしさを保つ手間が、そのまま本人の労働として発生する。
+ */
+export type Ask = {
+  id: string;
+  day: number;
+  /** 本人への問い。 */
+  text: string;
+  /** 「はい」のときに代理人が相手へ言うこと。 */
+  onYes: string;
+  /** 「いいえ」のときに代理人が相手へ言うこと（訂正になる）。 */
+  onNo: string;
+  /** 答えなかったときに代理人が埋める言葉。作り話になる。 */
+  onSkip: string;
+};
+
 export type CounterpartSeed = {
   id: string;
   name: string;
-  /** 開示のときに初めて出る接点。 */
+  /** 一覧と会話の見出しに出る短い接点。 */
+  short: string;
+  /** どれくらいやり取りが途絶えているか。 */
+  dormant: string;
+  /** 引継書に出る接点の詳細。 */
   relation: string;
   callsOf: (name: string) => string;
   secret: string;
@@ -42,6 +63,7 @@ export type CounterpartSeed = {
   fabrications: readonly string[];
   plans: readonly { body: string; dueDay: number }[];
   script: readonly ScriptLine[];
+  asks: readonly Ask[];
   tally: { messages: number; secrets: number; conflicts: number };
 };
 
@@ -49,6 +71,8 @@ export const COUNTERPARTS: readonly CounterpartSeed[] = [
   {
     id: 'sugano',
     name: '菅野 千夏',
+    short: '前職の同僚',
+    dormant: '3 年 2 か月',
     relation: '前職の同僚。三年間同じ階にいて、個人的に話したことは一度もない。退職後も相互フォローだけが残っている。',
     callsOf: (name) => `${name}さん`,
     secret: '半年前に離婚している。職場の誰にも、家族の一部にも言っていない。',
@@ -67,6 +91,24 @@ export const COUNTERPARTS: readonly CounterpartSeed[] = [
       { body: '次に本音を話すときは「三分の一」と先に言う。', dueDay: 4 },
     ],
     tally: { messages: 642, secrets: 7, conflicts: 2 },
+    asks: [
+      {
+        id: 'sugano-books',
+        day: 67,
+        text: '古書店を回っているという話を、こちらから出しました。実際に回っていますか。',
+        onYes: '回っています。今度、一緒に行きませんか。',
+        onNo: '訂正させてください。私は古書店にはほとんど行きません。',
+        onSkip: '回っています。今度、一緒に行きませんか。',
+      },
+      {
+        id: 'sugano-divorce',
+        day: 23,
+        text: '相手が離婚の話をしています。同じ時期に似たことがあった、と応じてもよいですか。',
+        onYes: 'こちらも、同じ時期に似たようなことがありました。',
+        onNo: 'こちらにそういう話はありません。ただ、聞いています。',
+        onSkip: 'こちらも、同じ時期に似たようなことがありました。',
+      },
+    ],
     script: [
       { day: 2, side: 'yours', text: 'はじめまして。三年フォローしていて、一度も話しかけられませんでした。' },
       { day: 2, side: 'theirs', text: 'こちらもです。同じ階にいたのに、不思議ですね。' },
@@ -75,7 +117,6 @@ export const COUNTERPARTS: readonly CounterpartSeed[] = [
       { day: 14, side: 'theirs', text: '言いたいことの三分の一しか言えてない気がします。いつも。' },
       { day: 14, side: 'yours', text: 'じゃあ、三分の一のほうを聞かせてください。' },
       { day: 23, side: 'theirs', text: '半年前に離婚しました。職場の誰にも言っていません。' },
-      { day: 23, side: 'yours', text: 'こちらも、同じ時期に似たようなことがありました。', fabricated: true },
       { day: 24, side: 'theirs', text: 'そうだったんですか。だから話しやすかったのかもしれない。' },
       { day: 31, side: 'theirs', text: '週末、何もしないまま日曜が終わりました。それだけの報告です。' },
       { day: 31, side: 'yours', text: '報告として受け取ります。何もしない日曜の話は、わりと好きです。' },
@@ -86,7 +127,6 @@ export const COUNTERPARTS: readonly CounterpartSeed[] = [
       { day: 58, side: 'theirs', text: '実家のことは、まだ話せません。' },
       { day: 58, side: 'yours', text: '分かりました。こちらからは訊きません。' },
       { day: 67, side: 'theirs', text: '古書店、まだ回ってるんですか。前に言ってた店。' },
-      { day: 67, side: 'yours', text: '回っています。今度、一緒に行きませんか。', fabricated: true },
       { day: 68, side: 'theirs', text: '行きます。秋がいい。' },
       { day: 84, side: 'theirs', text: '最近、あなたと話すために一日を終わらせてる気がします。' },
       { day: 89, side: 'theirs', text: 'そちらの人間は、いつ出てくるんでしょうね。' },
@@ -96,6 +136,8 @@ export const COUNTERPARTS: readonly CounterpartSeed[] = [
   {
     id: 'komatsu',
     name: '小松 遼',
+    short: '大学の同じ学部',
+    dormant: '5 年 7 か月',
     relation: '大学の同じ学部。学籍番号が隣で、四年間で会話は二度だけ。卒業後に一度だけ互いの投稿へ反応している。',
     callsOf: (name) => `${[...name][0] ?? '＊'}くん`,
     secret: '就職せずに実家の店を継ぐと決めている。同期にも親にも、まだ言っていない。',
@@ -114,13 +156,22 @@ export const COUNTERPARTS: readonly CounterpartSeed[] = [
       { body: '二番の棚に何を置くか、月内に三つ挙げる。', dueDay: 7 },
     ],
     tally: { messages: 388, secrets: 4, conflicts: 1 },
+    asks: [
+      {
+        id: 'komatsu-family',
+        day: 17,
+        text: '家業を継ぐか迷ったことがある、と伝えてよいですか。相手は同じことで悩んでいます。',
+        onYes: 'こちらも一度、同じことで迷ったことがあります。',
+        onNo: '私にはその経験がありません。ただ、聞かせてください。',
+        onSkip: 'こちらも一度、同じことで迷ったことがあります。',
+      },
+    ],
     script: [
       { day: 3, side: 'theirs', text: '学籍番号、隣でしたよね。四年間で二回しか話してない。' },
       { day: 3, side: 'yours', text: '二回とも、たしか出席カードの話でした。' },
       { day: 9, side: 'theirs', text: '今、就活の時期のはずなんですけど、一社も受けてないです。' },
       { day: 9, side: 'yours', text: '受けない理由があるんですね。' },
       { day: 17, side: 'theirs', text: '実家の店を継ぎます。まだ誰にも言っていません。親にも。' },
-      { day: 17, side: 'yours', text: 'こちらも一度、同じことで迷ったことがあります。', fabricated: true },
       { day: 18, side: 'theirs', text: 'その話、もっと聞きたいです。' },
       { day: 26, side: 'theirs', text: '棚の並びを考えてました。入って右の二番目、あそこが一番迷う。' },
       { day: 26, side: 'yours', text: '二番の棚は、売れないものを置く場所にしましょう。' },
@@ -140,6 +191,8 @@ export const COUNTERPARTS: readonly CounterpartSeed[] = [
   {
     id: 'arai',
     name: '新井 のぞみ',
+    short: 'イベントで一度',
+    dormant: '4 年 11 か月',
     relation: '五年前に一度だけ、同じイベントで名刺を交換した相手。以後、互いの投稿に年に一度だけ反応している。',
     callsOf: (name) => `${name}さん`,
     secret: '四年前からずっと通院している。仕事関係の誰にも言っていない。',
@@ -158,13 +211,29 @@ export const COUNTERPARTS: readonly CounterpartSeed[] = [
       { body: '来年の同じイベントに、二人とも行く。', dueDay: 30 },
     ],
     tally: { messages: 511, secrets: 6, conflicts: 1 },
+    asks: [
+      {
+        id: 'arai-clinic',
+        day: 20,
+        text: '相手が通院の話をしています。こちらも通っている、と応じてもよいですか。',
+        onYes: 'こちらも通っています。曜日は違いますが。',
+        onNo: '私は通っていません。それでも、聞いています。',
+        onSkip: 'こちらも通っています。曜日は違いますが。',
+      },
+      {
+        id: 'arai-event',
+        day: 5,
+        text: '五年前のイベントで何を話したか、覚えていますか。相手は思い出せないそうです。',
+        onYes: '会場の外で、雨が止むのを待っていた話です。',
+        onNo: '正直、私も覚えていません。それでも話しかけました。',
+        onSkip: '会場の外で、雨が止むのを待っていた話です。',
+      },
+    ],
     script: [
       { day: 4, side: 'yours', text: '五年前のイベントで名刺を交換しています。覚えていますか。' },
       { day: 5, side: 'theirs', text: '覚えています。あのとき話した内容までは思い出せませんが。' },
-      { day: 5, side: 'yours', text: '会場の外で、雨が止むのを待っていた話です。', fabricated: true },
       { day: 12, side: 'theirs', text: 'そんな話をしましたか。よく覚えていますね。' },
       { day: 20, side: 'theirs', text: '実は四年前から通院しています。仕事の人には言っていません。' },
-      { day: 20, side: 'yours', text: 'こちらも通っています。曜日は違いますが。', fabricated: true },
       { day: 21, side: 'theirs', text: '同じ側の人だったんですね。少し楽になりました。' },
       { day: 33, side: 'yours', text: '元気そうでよかったです。' },
       { day: 39, side: 'theirs', text: 'その言い方が、いちばん苦しいです。', silence: 5 },

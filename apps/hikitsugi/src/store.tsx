@@ -10,7 +10,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import * as db from './lib/db.ts';
 import { buildHandover, buildThreads } from './lib/generate.ts';
 import { DEFAULT_DAY_MS, agentReplyText, bubblesOf, isReady } from './lib/threads.ts';
-import { isoTime, type Decision, type Handover, type Intake, type Thread } from './lib/types.ts';
+import { isoTime, type AskAnswer, type Decision, type Handover, type Intake, type Thread } from './lib/types.ts';
 
 const KV_INTAKE = 'intake';
 const KV_THREADS = 'threads';
@@ -41,6 +41,8 @@ export type Store = {
   send: (threadId: string, text: string) => Promise<void>;
   delegate: (threadId: string) => Promise<void>;
   markRead: (threadId: string) => Promise<void>;
+  /** 代理人からの確認に答える。答えないと代理人が埋める。 */
+  answerAsk: (threadId: string, askId: string, answer: AskAnswer) => Promise<void>;
   decide: (threadId: string, decision: Decision) => Promise<void>;
   setDayMs: (dayMs: number) => Promise<void>;
   reset: () => Promise<void>;
@@ -106,7 +108,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       ]);
       if (cancelled) return;
       setIntake(loadedIntake);
-      if (loadedThreads) setThreads(loadedThreads);
+      // 前の版で保存したトークには answers が無いので補う
+      if (loadedThreads) setThreads(loadedThreads.map((thread) => ({ ...thread, answers: thread.answers ?? {} })));
       if (loadedSettings) setSettings({ ...DEFAULT_SETTINGS, ...loadedSettings });
     })()
       .catch(() => undefined)
@@ -196,6 +199,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     [patch],
   );
 
+  const answerAsk = useCallback(
+    async (threadId: string, askId: string, answer: AskAnswer) => {
+      await patch(threadId, (thread) => ({ ...thread, answers: { ...thread.answers, [askId]: answer } }));
+    },
+    [patch],
+  );
+
   const decide = useCallback(
     async (threadId: string, decision: Decision) => {
       const thread = threadsRef.current.find((t) => t.id === threadId);
@@ -257,11 +267,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       send,
       delegate,
       markRead,
+      answerAsk,
       decide,
       setDayMs,
       reset,
     };
-  }, [apply, decide, delegate, intake, markRead, now, persistent, ready, reset, send, setDayMs, settings, threads]);
+  }, [answerAsk, apply, decide, delegate, intake, markRead, now, persistent, ready, reset, send, setDayMs, settings, threads]);
 
   return <StoreContext.Provider value={value}>{children}</StoreContext.Provider>;
 }

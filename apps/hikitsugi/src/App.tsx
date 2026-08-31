@@ -7,7 +7,7 @@ import { Intake } from './components/Intake.tsx';
 import { Settings } from './components/Settings.tsx';
 import { TabBar, type Tab } from './components/TabBar.tsx';
 import { unlocked } from './lib/gate.ts';
-import { bubblesOf, unreadOf } from './lib/threads.ts';
+import { bubblesOf, pendingAsksOf, unreadOf } from './lib/threads.ts';
 import { useStore } from './store.tsx';
 
 export function App() {
@@ -48,10 +48,11 @@ export function App() {
 
   // 未読の合計。タブの右上に出す
   const unread = (kind: 'mine' | 'proxy'): number =>
-    (kind === 'mine' ? store.mine : store.proxies).reduce(
-      (sum, thread) => sum + unreadOf(thread, bubblesOf(thread, store.now, store.settings.dayMs)),
-      0,
-    );
+    (kind === 'mine' ? store.mine : store.proxies).reduce((sum, thread) => {
+      const bubbles = bubblesOf(thread, store.now, store.settings.dayMs);
+      // 未回答の確認も数に入れる。放っておくと代理人が埋めてしまうため
+      return sum + unreadOf(thread, bubbles) + pendingAsksOf(bubbles);
+    }, 0);
 
   return (
     <div className="app">

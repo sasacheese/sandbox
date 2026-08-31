@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { bubblesOf, DEFAULT_DAY_MS, daysSinceInherit, elapsedDays, isReady, previewOf, unreadOf } from './threads.ts';
+import { bubblesOf, DEFAULT_DAY_MS, daysSinceInherit, elapsedDays, isReady, pendingAsksOf, previewOf, unreadOf } from './threads.ts';
 import { buildPlainThreads, buildProxyThreads, seeded } from './generate.ts';
+import { COUNTERPARTS } from './pools.ts';
 import { isoTime, type Thread } from './types.ts';
 
 const DAY = DEFAULT_DAY_MS;
@@ -40,14 +41,46 @@ test('代理人のトークは、経過した日までのやり取りしか出�
   // 全部が代理人の書いたものとして印が付く
   assert.ok(full.every((b) => b.byAgent));
   // 自分の側にも吹き出しが出る（打っていないのに）
-  assert.ok(full.some((b) => b.side === 'right'));
+  assert.ok(full.some((b) => b.side === 'right' && !b.ask));
 });
 
-test('作り話には注記の印が付き、こちらの側にだけ現れる', () => {
+test('確認は本人へ向いた札として出る', () => {
   const bubbles = bubblesOf(proxy(0), NOW, DAY);
+  const asks = bubbles.filter((b) => b.ask);
+  assert.ok(asks.length > 0, '確認が出ていない');
+  assert.ok(asks.every((b) => b.side === 'right' && b.byAgent));
+});
+
+test('答えないまま猶予を過ぎると代理人が埋め、その一文が作り話になる', () => {
+  const thread = proxy(0);
+  // 猶予は実時間でも確保されるので、十分あとの時刻で見る
+  const bubbles = bubblesOf(thread, new Date(NOW.getTime() + 300_000), DAY);
   const fabricated = bubbles.filter((b) => b.fabricated);
-  assert.ok(fabricated.length > 0);
+  assert.ok(fabricated.length > 0, '埋めた跡が無い');
   assert.ok(fabricated.every((b) => b.side === 'right'));
+  // 埋められた確認には、その印が付く
+  assert.ok(bubbles.some((b) => b.ask?.autoFilled));
+});
+
+test('答えれば、同じ一文が作り話にならない', () => {
+  const bare = bubblesOf(proxy(0), new Date(NOW.getTime() + 300_000), DAY);
+  const askId = bare.find((b) => b.ask)?.ask?.id;
+  assert.ok(askId);
+  const answered = bubblesOf(proxy(0, { answers: { [askId]: 'yes' } }), new Date(NOW.getTime() + 300_000), DAY);
+  const outcome = answered.find((b) => b.id.startsWith(`askr-`) && b.id.endsWith(askId));
+  assert.ok(outcome, '確認の結果が出ていない');
+  assert.equal(outcome.fabricated, undefined);
+  assert.equal(answered.find((b) => b.ask?.id === askId)?.ask?.answered, 'yes');
+});
+
+test('「いいえ」と答えると、代理人が訂正する', () => {
+  const bare = bubblesOf(proxy(0), NOW, DAY);
+  const askId = bare.find((b) => b.ask)?.ask?.id;
+  assert.ok(askId);
+  const yes = bubblesOf(proxy(0, { answers: { [askId]: 'yes' } }), NOW, DAY).find((b) => b.id.startsWith('askr-'));
+  const no = bubblesOf(proxy(0, { answers: { [askId]: 'no' } }), NOW, DAY).find((b) => b.id.startsWith('askr-'));
+  assert.ok(yes && no);
+  assert.notEqual(yes.text, no.text);
 });
 
 test('引き継ぐと、仕切りのあとに人間の区間が続く', () => {
@@ -123,4 +156,42 @@ test('双方が引き継いだ場合だけ、表題が氏名に変わる（store
   assert.equal(reveal({ ...mutual, decision: 'inherit' }), true);
   assert.equal(reveal({ ...oneSided, decision: 'inherit' }), false);
   assert.equal(reveal({ ...mutual, decision: 'agent_only' }), false);
+});
+
+test('目の前で出た確認は、倍率を上げても実時間の猶予がある', () => {
+  // 開始直後のトークを使う。始まる前に過ぎた確認は「その場にいなかった」ので
+  // 最初から埋まっているが、目の前で出たものには答える間が要る
+  const young = proxy(2);
+  const seed = COUNTERPARTS.find((c) => c.id === young.seedId);
+  assert.ok(seed);
+  const days = young.days ?? 90;
+  // 始まる前に過ぎた確認は除き、これから出るものを取る
+  const upcoming = seed.asks
+    .map((a) => Math.max(1, Math.round((a.day / 90) * days)))
+    .filter((day) => day > young.headStart)
+    .sort((a, b) => a - b);
+  const firstAsk = upcoming[0];
+  assert.ok(firstAsk !== undefined, '前提：これから出る確認がある');
+
+  const appears = new Date(NOW.getTime() + (firstAsk - young.headStart) * DAY);
+  const justShown = bubblesOf(young, appears, DAY).filter((b) => b.ask?.id === askIdOf(seed, firstAsk, days));
+  assert.ok(justShown.length > 0, '確認が出ていない');
+  assert.ok(justShown.every((b) => !b.ask?.autoFilled), '出た直後に埋まっている');
+
+  const later = bubblesOf(young, new Date(appears.getTime() + 120_000), DAY).filter(
+    (b) => b.ask?.id === askIdOf(seed, firstAsk, days),
+  );
+  assert.ok(later.some((b) => b.ask?.autoFilled), '実時間の猶予を過ぎても埋まらない');
+});
+
+/** 縮めた日付から、その日の確認の id を引く。 */
+function askIdOf(seed: (typeof COUNTERPARTS)[number], day: number, days: number): string | undefined {
+  return seed.asks.find((a) => Math.max(1, Math.round((a.day / 90) * days)) === day)?.id;
+}
+
+test('代理人が埋めてしまった確認は、答えられる数に数えない', () => {
+  const thread = proxy(0);
+  const filled = bubblesOf(thread, new Date(NOW.getTime() + 300_000), DAY);
+  assert.ok(filled.some((b) => b.ask?.autoFilled), '前提：埋まった確認がある');
+  assert.equal(pendingAsksOf(filled), 0);
 });

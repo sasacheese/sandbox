@@ -68,14 +68,23 @@ export type Bubble = {
   silence?: number;
   /** この一通の前に挟む仕切り（引き継ぎの位置）。 */
   divider?: string;
+  /**
+   * 代理人からの確認。吹き出しではなく、本人への問いとして描く。
+   *
+   * 答えなければ代理人が勝手に埋める（そのとき、同じ文が作り話になる）。
+   * **同じ一文が、答えたかどうかで事実にも嘘にもなる**のがこの作りの要点。
+   */
+  ask?: { id: string; text: string; answered?: AskAnswer; autoFilled?: boolean };
 };
+
+export type AskAnswer = 'yes' | 'no' | 'skip';
 
 export type ThreadKind = 'plain' | 'proxy';
 
 export type Thread = {
   id: string;
   kind: ThreadKind;
-  /** plain は実名、proxy は伏せた呼び名（A / B / C）。 */
+  /** 相手の名前。伏せない（伏せる制度上の理由が無いため）。 */
   title: string;
   /** proxy のときだけ。lib/pools.ts の相手の id。 */
   seedId?: string;
@@ -100,6 +109,8 @@ export type Thread = {
   delta: number;
   /** 自分が打ったもの。 */
   sent: Sent[];
+  /** 代理人からの確認への答え。 */
+  answers: Record<string, AskAnswer>;
   /** 既読にした時刻。未読の数を出すために持つ。 */
   readAt?: IsoTime;
 };
@@ -109,8 +120,9 @@ export type Handover = {
   threadId: string;
   serial: string;
   days: number;
-  alias: string;
   name: string;
+  short: string;
+  dormant: string;
   relation: string;
   calls: string;
   closeness: number;

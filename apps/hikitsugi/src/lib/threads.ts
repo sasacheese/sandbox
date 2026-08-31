@@ -7,7 +7,24 @@
  */
 
 import { AGENT_REPLIES, COUNTERPARTS, followUpsByAgent, followUpsByHuman, PLAIN_THREADS, SCRIPT_SCALE } from './pools.ts';
-import type { Bubble, Thread } from './types.ts';
+import type { AskAnswer, Bubble, Thread } from './types.ts';
+
+/** 確認に答えないまま何日過ぎたら、代理人が勝手に埋めるか。 */
+export const ASK_GRACE_DAYS = 2;
+
+/**
+ * ただし、実時間でこれより短くはしない。
+ *
+ * 一日を 3 秒で流していると 2 日は 6 秒で、画面を見ていても答える間が無い
+ * （実際に、出た瞬間に埋まっていた）。倍率をどれだけ上げても、人が読んで
+ * 押すぶんの時間は残す。
+ */
+export const ASK_GRACE_MIN_MS = 90_000;
+
+/** 確認が出てから、代理人が埋めるまでの長さ。 */
+export function askGraceMs(dayMs: number): number {
+  return Math.max(ASK_GRACE_DAYS * dayMs, ASK_GRACE_MIN_MS);
+}
 
 /** 一日の長さ。既定は 3 秒（触ってすぐ意味が分かる速さ）。 */
 export const DAY_PRESETS = [
@@ -54,22 +71,79 @@ function proxyBubbles(thread: Thread, now: Date, dayMs: number): Bubble[] {
   /** 何日目の発言かを、実時刻へ戻す（表示は「◯日目」だが並べ替えに時刻が要る）。 */
   const atOfDay = (day: number): number => created + (day - thread.headStart) * dayMs;
 
-  const out: Bubble[] = seed.script
-    .map((line, index) => {
-      const day = Math.max(1, Math.min(days, Math.round((line.day / SCRIPT_SCALE) * days)));
-      return { line, index, day };
-    })
-    .filter(({ day }) => day <= elapsed)
-    .map(({ line, index, day }) => ({
-      id: `s-${thread.id}-${index}`,
-      side: line.side === 'yours' ? ('right' as const) : ('left' as const),
-      text: line.text,
-      at: iso(atOfDay(day)),
-      dayLabel: `${day} 日目`,
-      byAgent: true,
-      ...(line.fabricated ? { fabricated: true } : {}),
-      ...(line.silence ? { silence: Math.max(1, Math.round((line.silence / SCRIPT_SCALE) * days)) } : {}),
-    }));
+  /** 台本の日付は 90 日を基準に書いてあるので、選ばれた期間へ縮める。 */
+  const scale = (day: number): number => Math.max(1, Math.min(days, Math.round((day / SCRIPT_SCALE) * days)));
+
+  /*
+   * 同じ日の中の並び順。
+   *
+   * 台本 → 代理人からの確認 → 確認の結果、の順に置く。相手が打ち明けた直後に
+   * 確認が来て、答えると代理人がその場で応じる、という流れを作るため。
+   */
+  const ordered: { seq: number; bubble: Bubble }[] = [];
+
+  seed.script.forEach((line, index) => {
+    const day = scale(line.day);
+    if (day > elapsed) return;
+    ordered.push({
+      seq: day * 1000 + index,
+      bubble: {
+        id: `s-${thread.id}-${index}`,
+        side: line.side === 'yours' ? 'right' : 'left',
+        text: line.text,
+        at: iso(atOfDay(day)),
+        dayLabel: `${day} 日目`,
+        byAgent: true,
+        ...(line.silence ? { silence: Math.max(1, Math.round((line.silence / SCRIPT_SCALE) * days)) } : {}),
+      },
+    });
+  });
+
+  seed.asks.forEach((ask, index) => {
+    const day = scale(ask.day);
+    if (day > elapsed) return;
+    const answered = thread.answers[ask.id];
+    /*
+     * 確認の結果。
+     *
+     * 答えればその通りに、答えないまま猶予を過ぎれば代理人が埋める。
+     * **埋めたぶんだけ、同じ一文が作り話になる。**
+     */
+    const shownAt = atOfDay(day);
+    const filled: AskAnswer | null =
+      answered ?? (now.getTime() - shownAt > askGraceMs(dayMs) ? 'skip' : null);
+    const autoFilled = !answered && filled === 'skip';
+
+    ordered.push({
+      seq: day * 1000 + 400 + index,
+      bubble: {
+        id: `ask-${thread.id}-${ask.id}`,
+        side: 'right',
+        text: ask.text,
+        at: iso(atOfDay(day)),
+        dayLabel: `${day} 日目`,
+        byAgent: true,
+        ask: { id: ask.id, text: ask.text, ...(answered ? { answered } : {}), ...(autoFilled ? { autoFilled: true } : {}) },
+      },
+    });
+
+    if (!filled) return;
+    const text = filled === 'yes' ? ask.onYes : filled === 'no' ? ask.onNo : ask.onSkip;
+    ordered.push({
+      seq: day * 1000 + 700 + index,
+      bubble: {
+        id: `askr-${thread.id}-${ask.id}`,
+        side: 'right',
+        text,
+        at: iso(atOfDay(day) + 1),
+        dayLabel: `${day} 日目`,
+        byAgent: true,
+        ...(filled === 'skip' ? { fabricated: true } : {}),
+      },
+    });
+  });
+
+  const out: Bubble[] = ordered.sort((a, b) => a.seq - b.seq).map((item) => item.bubble);
 
   /*
    * 代理人だけに続けさせた場合。
@@ -209,6 +283,16 @@ export function previewOf(bubbles: readonly Bubble[]): { text: string; at: strin
 export function unreadOf(thread: Thread, bubbles: readonly Bubble[]): number {
   const read = thread.readAt ?? '';
   return bubbles.filter((b) => b.side === 'left' && b.at > read).length;
+}
+
+/**
+ * まだ答えられる確認の数。
+ *
+ * 代理人が埋めてしまったものは数えない（もう答えようがないので、印が出続けると
+ * 促されているように見えてしまう）。数えるのは、いま答えれば間に合うものだけ。
+ */
+export function pendingAsksOf(bubbles: readonly Bubble[]): number {
+  return bubbles.filter((b) => b.ask && !b.ask.answered && !b.ask.autoFilled).length;
 }
 
 /** 代理人に任せたときの文面。同じトークで繰り返さないよう順に選ぶ。 */

@@ -24,7 +24,8 @@ test('代理人のトークは三本、進み方がずれて始まる', () => {
   assert.equal(progress[0], 1, '一本目は満了している');
   assert.ok((progress[1] ?? 0) > 0 && (progress[1] ?? 0) < 1, '二本目は途中');
   assert.ok((progress[2] ?? 1) < 0.3, '三本目は始まったばかり');
-  assert.deepEqual(threads.map((t) => t.title), ['A', 'B', 'C']);
+  // 名前は伏せない
+  assert.ok(threads.every((t) => t.title.length > 1));
 });
 
 test('自分のトークは止まったもので、既読で始まる', () => {
@@ -39,8 +40,8 @@ test('一覧は代理人のトークと自分のトークの両方を含む', ()
   const threads = buildThreads(NOW, seeded('y'));
   assert.ok(threads.some((t) => t.kind === 'proxy'));
   assert.ok(threads.some((t) => t.kind === 'plain'));
-  // 代理人のトークの相手は伏せられている
-  assert.ok(threads.filter((t) => t.kind === 'proxy').every((t) => ['A', 'B', 'C', 'D'].includes(t.title)));
+  // 相手の名前は最初から出ている
+  assert.ok(threads.filter((t) => t.kind === 'proxy').every((t) => t.title.length > 1));
 });
 
 test('相手側の判断は三通りあり、トークごとに決まっている', () => {
@@ -69,15 +70,33 @@ test('同じトークからは毎回同じ引継書が出る', () => {
   assert.deepEqual(buildHandover(thread, intake()), buildHandover(thread, intake()));
 });
 
-test('引継書には氏名と接点が入っているが、トークの表題は伏せたまま', () => {
+test('引継書には氏名・接点・沈黙の長さが入る', () => {
   const thread = buildProxyThreads(NOW, seeded('t'))[0];
   assert.ok(thread);
   const handover = buildHandover(thread, intake());
   assert.ok(handover);
-  assert.ok(handover.name.length > 0);
+  assert.equal(handover.name, thread.title);
   assert.ok(handover.relation.length > 0);
-  assert.equal(handover.alias, thread.title);
-  assert.notEqual(handover.name, thread.title);
+  assert.ok(handover.short.length > 0);
+  assert.ok(handover.dormant.length > 0);
+});
+
+test('確認に答えるたび、相手が信じている作り話が減る', () => {
+  const thread = buildProxyThreads(NOW, seeded('a'))[0];
+  assert.ok(thread);
+  const before = buildHandover(thread, intake({ persona: 100 }));
+  const answered = buildHandover({ ...thread, answers: { x: 'yes', y: 'no' } }, intake({ persona: 100 }));
+  const count = (h: typeof before) => h?.beliefs.filter((b) => b.fabricated).length ?? 0;
+  assert.ok(count(answered) < count(before), '答えても作り話が減らない');
+});
+
+test('答えない（skip）は作り話を減らさない', () => {
+  const thread = buildProxyThreads(NOW, seeded('b'))[0];
+  assert.ok(thread);
+  const skipped = buildHandover({ ...thread, answers: { x: 'skip', y: 'skip' } }, intake({ persona: 100 }));
+  const none = buildHandover(thread, intake({ persona: 100 }));
+  const count = (h: typeof none) => h?.beliefs.filter((b) => b.fabricated).length ?? 0;
+  assert.equal(count(skipped), count(none));
 });
 
 test('触れられたくない話題が、相手の秘密に応じる材料として載る', () => {

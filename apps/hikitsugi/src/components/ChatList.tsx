@@ -1,6 +1,6 @@
 import { closenessLabel, listTime } from '../lib/format.ts';
 import { effectiveCloseness } from '../lib/closeness.ts';
-import { bubblesOf, daysSinceInherit, elapsedDays, isReady, previewOf, unreadOf } from '../lib/threads.ts';
+import { bubblesOf, daysSinceInherit, elapsedDays, isReady, pendingAsksOf, previewOf, unreadOf } from '../lib/threads.ts';
 import type { Thread } from '../lib/types.ts';
 import { useStore } from '../store.tsx';
 import { Avatar } from './Avatar.tsx';
@@ -27,7 +27,7 @@ export function ChatList({ kind, onOpen }: { kind: 'mine' | 'proxy'; onOpen: (th
 
       {kind === 'proxy' ? (
         <p className="listhead__lede">
-          あなたの代理人が応対しています。相手が誰かは伏せられています。交流が満了したものから引き継げます。
+          あなたの代理人が応対しています。交流が満了したものから引き継げます。相手が引き継ぐかどうかは、申し出るまで分かりません。
         </p>
       ) : null}
 
@@ -52,6 +52,7 @@ function Row({ thread, onOpen }: { thread: Thread; onOpen: (threadId: string) =>
   const preview = previewOf(bubbles);
   const unread = unreadOf(thread, bubbles);
   const handover = thread.kind === 'proxy' ? handoverFor(thread.id) : null;
+  const pending = pendingAsksOf(bubbles);
   const base = handover?.closeness ?? 0;
   const current = thread.decision === 'inherit' ? effectiveCloseness(base, thread.delta, daysSinceInherit(thread, now, settings.dayMs)) : base;
   const closed = thread.decision === 'end' || thread.decision === 'agent_only';
@@ -73,8 +74,10 @@ function Row({ thread, onOpen }: { thread: Thread; onOpen: (threadId: string) =>
           <span className="row__text">{preview.text || 'まだやり取りがありません'}</span>
           {unread > 0 ? <span className="row__badge">{unread > 99 ? '99+' : unread}</span> : null}
         </div>
-        <div className="row__preview">
+        <div className="row__preview row__preview--state">
           <State thread={thread} closeness={current} />
+          {handover && !thread.decision ? <span className="row__dormant">沈黙 {handover.dormant}</span> : null}
+          {pending > 0 ? <span className="chip-state chip-state--ask">確認 {pending}</span> : null}
         </div>
       </div>
     </button>
