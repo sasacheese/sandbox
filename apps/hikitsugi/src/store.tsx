@@ -1,44 +1,58 @@
 /**
  * 状態。
  *
- * 申込 → 代行 → 引き継ぎ → その後、の一本道。戻れる場所は無い（引継書を
- * 受け取らない選択も、受け取ってから捨てる選択も用意していない）。
- * このサービスに解約が無いことが、作品としての言い分。
+ * 申込 → 交流 → 引継書 → 判断 → その後（または代理人へ継続）。
+ *
+ * 判断のところだけ分岐があり、それ以外は一本道。**引き継がない道も、
+ * 引き継いだあとに代理人へ戻す道も用意してある**のが、この作品の要点。
+ * どの道を選んでも失うものがあるので、「正解の分岐」は無い。
  */
 
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
-import { messages as buildMessages, questions as buildQuestions, CLOSENESS_ON_RIGHT, CLOSENESS_ON_WRONG, type Message, type Question } from './lib/after.ts';
-import { effectiveCloseness, inheritedCloseness } from './lib/closeness.ts';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import {
+  CLOSENESS_ON_AGENT_REPLY,
+  CLOSENESS_ON_RIGHT,
+  CLOSENESS_ON_SELF_REPLY,
+  CLOSENESS_ON_WRONG,
+  messages as buildMessages,
+  questions as buildQuestions,
+  type Question,
+} from './lib/after.ts';
+import { effectiveCloseness } from './lib/closeness.ts';
 import * as db from './lib/db.ts';
 import { buildHandover, daysSinceHandover } from './lib/generate.ts';
-import { isoTime, type Handover, type Intake, type Phase, type PromiseStatus } from './lib/types.ts';
+import { EXTENSION_LINES } from './lib/pools.ts';
+import { isoTime, type Decision, type Handover, type Intake, type Message, type Phase, type Pledge } from './lib/types.ts';
+
+type PledgeStatus = Pledge['status'];
 
 const KV_INTAKE = 'intake';
 const KV_HANDOVER = 'handover';
 const KV_PHASE = 'phase';
 const KV_STATE = 'state';
 
-/** 代行期間の一日を、実時間で何ミリ秒で流すか。見ている人を待たせないため。 */
-export const MS_PER_PROXY_DAY = 420;
+/** 交流期間の一日を、実時間で何ミリ秒で流すか。 */
+export const MS_PER_PROXY_DAY = 380;
+
+/** 延長は一回 14 日。 */
+export const EXTENSION_DAYS = 14;
 
 export type Answer = { choice: number; correct: boolean };
+export type ReplyKind = 'self' | 'agent';
 
 export type AfterState = {
+  decision: Decision | null;
   answers: Record<string, Answer>;
-  /** 親密度の増減。引継書の値には触らず、差分だけを持つ。 */
-  deltas: Record<string, number>;
-  pledges: Record<string, PromiseStatus>;
-  /** その後の時間の倍率。1 なら実時間で、1 日の期限は本当に 1 日。 */
+  replies: Record<string, ReplyKind>;
+  /** 親密度の増減。相手は一人なので数値ひとつ。 */
+  delta: number;
+  pledges: Record<string, PledgeStatus>;
+  /** その後の時間の倍率。既定は 1 日 = 1 時間。 */
   rate: number;
+  extended: number;
 };
 
-/**
- * 既定は 1 日 = 1 時間。
- *
- * 1 日 = 1 分にしていたら、触っているあいだに本人の期間が代行期間を追い越して、
- * 図が「あなたが築いた」ように見えてしまった。既定は作品が正しく見える速さに置く。
- */
-const EMPTY_AFTER: AfterState = { answers: {}, deltas: {}, pledges: {}, rate: 24 };
+const EMPTY_AFTER: AfterState = { decision: null, answers: {}, replies: {}, delta: 0, pledges: {}, rate: 24, extended: 0 };
 
 export type Store = {
   ready: boolean;
@@ -49,19 +63,28 @@ export type Store = {
   questions: Question[];
   messages: Message[];
   after: AfterState;
-  /** 引き継ぎからの経過日数（倍率つき）。 */
   elapsed: number;
-  /** あなたの区間の目安。いちばん遠い約束の期限。図の横幅の割り当てに使う。 */
   horizon: number;
-  closenessOf: (companionId: string) => number;
-  /** 引き継いだ時点の親密度。図の茶色の部分に使う。 */
-  inheritedOf: (companionId: string) => number;
+  /**
+   * 相手の氏名を出してよいか。
+   *
+   * **双方が引き継いだ場合だけ**開示される。こちらが引き継いでも、相手が
+   * 代理人に任せた（または拒否した）場合は最後まで「A」のまま。
+   * 申込書の条項にそう書いてあるので、実装がそれを破ってはいけない。
+   */
+  revealed: boolean;
+  closeness: number;
+  inherited: number;
+  /** 代理人に任せた返信の数。 */
+  agentReplies: number;
 
   apply: (input: Omit<Intake, 'startedAt'>) => Promise<void>;
   receive: () => Promise<void>;
+  decide: (decision: Decision) => Promise<void>;
   enter: () => Promise<void>;
   answer: (questionId: string, choice: number) => Promise<void>;
-  setPledge: (pledgeId: string, status: PromiseStatus) => Promise<void>;
+  reply: (messageId: string, kind: ReplyKind) => Promise<void>;
+  setPledge: (pledgeId: string, status: PledgeStatus) => Promise<void>;
   setRate: (rate: number) => Promise<void>;
   reset: () => Promise<void>;
 };
@@ -81,13 +104,17 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [intake, setIntake] = useState<Intake | null>(null);
   const [handover, setHandover] = useState<Handover | null>(null);
   const [after, setAfter] = useState<AfterState>(EMPTY_AFTER);
-  const [now, setNow] = useState(() => new Date());
+  const [clock, setClock] = useState(() => new Date());
 
-  // 期限と連絡の到着を進めるための時計
+  const afterRef = useRef(after);
   useEffect(() => {
-    const timer = setInterval(() => setNow(new Date()), 5_000);
+    afterRef.current = after;
+  }, [after]);
+
+  useEffect(() => {
+    const timer = setInterval(() => setClock(new Date()), 5_000);
     const onVisible = () => {
-      if (document.visibilityState === 'visible') setNow(new Date());
+      if (document.visibilityState === 'visible') setClock(new Date());
     };
     document.addEventListener('visibilitychange', onVisible);
     return () => {
@@ -132,27 +159,34 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     [persistent],
   );
 
+  const saveAfter = useCallback(
+    async (next: AfterState) => {
+      afterRef.current = next;
+      setAfter(next);
+      await save(KV_STATE, next);
+    },
+    [save],
+  );
+
   const apply = useCallback(
     async (input: Omit<Intake, 'startedAt'>) => {
       const next: Intake = { ...input, startedAt: isoTime(new Date()) };
       /*
-       * 引継書は申込の時点で組み立てて、そのまま保存する。
+       * 引継書は申込の時点で組み立てて保存する。
        *
-       * 代行期間のあいだ本人には見せないが、**中身はもう決まっている**。
-       * 「これから関係を築く」のではなく「もう築かれたものを渡される」という
-       * 順序が、このサービスの本質なので、実装もその順序にしてある。
+       * 交流期間のあいだ本人には見せないが、**中身はもう決まっている**。
+       * 相手側の人間の判断まで、この瞬間に確定している。
        */
       const built = buildHandover(next, new Date(), Math.random);
       setIntake(next);
       setHandover(built);
       setPhase('proxy');
-      setAfter(EMPTY_AFTER);
+      await saveAfter(EMPTY_AFTER);
       await save(KV_INTAKE, next);
       await save(KV_HANDOVER, built);
       await save(KV_PHASE, 'proxy');
-      await save(KV_STATE, EMPTY_AFTER);
     },
-    [save],
+    [save, saveAfter],
   );
 
   const receive = useCallback(async () => {
@@ -160,49 +194,102 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     await save(KV_PHASE, 'handover');
   }, [save]);
 
+  /**
+   * 本人の判断。
+   *
+   * 「もう少し続けさせる」だけは分岐が特別で、交流期間へ戻る。延ばせば
+   * 親密度は上がり、やり取りも増える。**延ばすほど引き継ぎにくくなる**。
+   */
+  const decide = useCallback(
+    async (decision: Decision) => {
+      if (!intake || !handover) return;
+      if (decision === 'extend') {
+        const days = intake.days + EXTENSION_DAYS;
+        const nextIntake: Intake = { ...intake, days, startedAt: isoTime(new Date()) };
+        const extra = EXTENSION_LINES.map((line) => ({ ...line, day: days }));
+        const nextHandover: Handover = {
+          ...handover,
+          days,
+          counterpart: { ...handover.counterpart, closeness: Math.min(95, handover.counterpart.closeness + 4) },
+          exchanges: [...handover.exchanges, ...extra],
+        };
+        setIntake(nextIntake);
+        setHandover(nextHandover);
+        setPhase('proxy');
+        await saveAfter({ ...afterRef.current, extended: afterRef.current.extended + 1 });
+        await save(KV_INTAKE, nextIntake);
+        await save(KV_HANDOVER, nextHandover);
+        await save(KV_PHASE, 'proxy');
+        return;
+      }
+      await saveAfter({ ...afterRef.current, decision });
+      setPhase('result');
+      await save(KV_PHASE, 'result');
+    },
+    [handover, intake, save, saveAfter],
+  );
+
+  /** 結果を読んだあと、その後の画面へ進む。 */
   const enter = useCallback(async () => {
-    setPhase('after');
-    await save(KV_PHASE, 'after');
-  }, [save]);
+    const decision = afterRef.current.decision;
+    const next: Phase = decision === 'inherit' && handover?.theirs !== 'refuse' ? 'after' : 'released';
+    setPhase(next);
+    await save(KV_PHASE, next);
+  }, [handover?.theirs, save]);
 
   const questions = useMemo(() => (handover ? buildQuestions(handover, seeded(handover.serial)) : []), [handover]);
-  const messages = useMemo(() => (handover ? buildMessages(handover, seeded(`${handover.serial}-m`)) : []), [handover]);
+  const messages = useMemo(
+    () => (handover && after.decision ? buildMessages(handover, after.decision) : []),
+    [after.decision, handover],
+  );
 
   const answer = useCallback(
     async (questionId: string, choice: number) => {
       const question = questions.find((q) => q.id === questionId);
-      if (!question || after.answers[questionId]) return;
+      const state = afterRef.current;
+      if (!question || state.answers[questionId]) return;
       const correct = choice === question.answer;
-      const next: AfterState = {
-        ...after,
-        answers: { ...after.answers, [questionId]: { choice, correct } },
-        deltas: {
-          ...after.deltas,
-          [question.companionId]: (after.deltas[question.companionId] ?? 0) + (correct ? CLOSENESS_ON_RIGHT : CLOSENESS_ON_WRONG),
-        },
-      };
-      setAfter(next);
-      await save(KV_STATE, next);
+      await saveAfter({
+        ...state,
+        answers: { ...state.answers, [questionId]: { choice, correct } },
+        delta: state.delta + (correct ? CLOSENESS_ON_RIGHT : CLOSENESS_ON_WRONG),
+      });
     },
-    [after, questions, save],
+    [questions, saveAfter],
+  );
+
+  /**
+   * 返し方を選ぶ。
+   *
+   * 自分の言葉で返すと下がり、代理人に任せると下がらない。**下がらない方を
+   * 選び続けると、自分は一度もこの関係に参加しないまま維持される。**
+   */
+  const reply = useCallback(
+    async (messageId: string, kind: ReplyKind) => {
+      const state = afterRef.current;
+      if (state.replies[messageId]) return;
+      await saveAfter({
+        ...state,
+        replies: { ...state.replies, [messageId]: kind },
+        delta: state.delta + (kind === 'self' ? CLOSENESS_ON_SELF_REPLY : CLOSENESS_ON_AGENT_REPLY),
+      });
+    },
+    [saveAfter],
   );
 
   const setPledge = useCallback(
-    async (pledgeId: string, status: PromiseStatus) => {
-      const next: AfterState = { ...after, pledges: { ...after.pledges, [pledgeId]: status } };
-      setAfter(next);
-      await save(KV_STATE, next);
+    async (pledgeId: string, status: PledgeStatus) => {
+      const state = afterRef.current;
+      await saveAfter({ ...state, pledges: { ...state.pledges, [pledgeId]: status } });
     },
-    [after, save],
+    [saveAfter],
   );
 
   const setRate = useCallback(
     async (rate: number) => {
-      const next: AfterState = { ...after, rate };
-      setAfter(next);
-      await save(KV_STATE, next);
+      await saveAfter({ ...afterRef.current, rate });
     },
-    [after, save],
+    [saveAfter],
   );
 
   const reset = useCallback(async () => {
@@ -210,11 +297,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     setIntake(null);
     setHandover(null);
     setPhase('intake');
+    afterRef.current = EMPTY_AFTER;
     setAfter(EMPTY_AFTER);
   }, [persistent]);
 
   const value = useMemo<Store>(() => {
-    const elapsed = handover && phase === 'after' ? daysSinceHandover(handover, now, after.rate) : 0;
+    const counting = phase === 'after' || phase === 'released';
+    const elapsed = handover && counting ? daysSinceHandover(handover, clock, after.rate) : 0;
+    const inherited = handover?.counterpart.closeness ?? 0;
     return {
       ready,
       persistent,
@@ -226,31 +316,26 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       after,
       elapsed,
       horizon: Math.max(14, ...(handover?.pledges.map((p) => p.dueDay) ?? [14])),
-      closenessOf: (companionId) => {
-        const base = handover?.companions.find((c) => c.id === companionId)?.closeness ?? 0;
-        return effectiveCloseness(base, after.deltas[companionId] ?? 0, elapsed);
-      },
-      inheritedOf: (companionId) =>
-        inheritedCloseness(handover?.companions.find((c) => c.id === companionId)?.closeness ?? 0),
+      revealed: after.decision === 'inherit' && handover?.theirs === 'inherit',
+      inherited,
+      closeness: effectiveCloseness(inherited, after.delta, elapsed),
+      agentReplies: Object.values(after.replies).filter((kind) => kind === 'agent').length,
       apply,
       receive,
+      decide,
       enter,
       answer,
+      reply,
       setPledge,
       setRate,
       reset,
     };
-  }, [after, answer, apply, enter, handover, intake, messages, now, persistent, phase, questions, ready, receive, reset, setPledge, setRate]);
+  }, [after, answer, apply, clock, decide, enter, handover, intake, messages, persistent, phase, questions, ready, receive, reply, reset, setPledge, setRate]);
 
   return <StoreContext.Provider value={value}>{children}</StoreContext.Provider>;
 }
 
-/**
- * 引継書の番号から作る乱数。
- *
- * 問いと連絡は保存していない（引継書から毎回組み立て直す）。同じ書類からは
- * 必ず同じ問いが出ないと、答えを覚えたあとに別の問いが出てしまう。
- */
+/** 引継書の番号から作る乱数。同じ書類からは必ず同じ問いが出る。 */
 function seeded(key: string): () => number {
   let state = 0;
   for (const ch of key) state = (state * 31 + (ch.codePointAt(0) ?? 0)) % 2147483647;

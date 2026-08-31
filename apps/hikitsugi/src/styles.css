@@ -6,8 +6,8 @@
  * 1. 地は事務用の紙。暗い側は用意しない。書類に夜の顔は無い。
  * 2. 引継書の本文は明朝、画面の部品はゴシック。読むものと操作するものを
  *    書体で分ける。契約書の体裁がそのまま不気味さになる。
- * 3. 色は二つ。墨と、代行の茶。**茶が付いているものは、本人が作ったのではない**
- *    という規則で徹底する（作り話・漏らした情報・代行の記録）。
+ * 3. 色は二つ。墨と、代理人の茶。**茶が付いているものは、本人が作ったのではない**
+ *    という規則で徹底する（作り話・漏らした情報・代理人のやり取り）。
  * 4. 罫線で仕切る。カードを浮かせない。影を使わない。
  */
 
@@ -23,7 +23,7 @@
   --rule: #ddd6c9;
   --rule-strong: #c3baa9;
 
-  /* 代行の色。本人の手によらないものに付ける */
+  /* 代理人の色。本人の手によらないものに付ける */
   --proxy: #8f6a3d;
   --proxy-soft: #f2e9dc;
   --warn: #a3402f;
@@ -362,7 +362,7 @@ p {
   color: var(--ink-dim);
 }
 
-/* 代行が作ったものに付く印。ここだけ茶で通す */
+/* 代理人が作ったものに付く印。ここだけ茶で通す */
 .mark-proxy {
   display: inline-block;
   font-family: var(--mono);
@@ -423,44 +423,96 @@ p {
   padding-top: 3px;
 }
 
-/* ------------------------------------------------------------ 記録 */
+/* ------------------------------------------------ 代理人同士のやり取り */
 
+/*
+ * この作品の主役。**面積をいちばん多く取る。**
+ * こちらの代理人の発言は茶、相手の代理人の発言は墨。作り話の注記は朱。
+ * 吹き出しにしない（会話アプリの顔になると、書類の中の抜粋に見えなくなる）。
+ */
 .log {
   border: 1px solid var(--rule);
   border-radius: var(--radius);
   background: var(--sheet);
-  max-height: 260px;
-  overflow-y: auto;
-}
-
-.log__row {
-  display: flex;
-  gap: 12px;
-  padding: 7px 12px;
-  border-bottom: 1px solid var(--rule);
-  font-size: 13px;
-}
-
-.log__row:last-child {
-  border-bottom: none;
+  padding: 4px 0;
+  /* 交流中の画面は中央揃えなので、ここで左揃えに戻す */
+  text-align: left;
 }
 
 .log__day {
   font-family: var(--mono);
-  font-size: 11px;
-  color: var(--proxy);
-  width: 46px;
-  flex: none;
-  padding-top: 2px;
-  font-variant-numeric: tabular-nums;
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  color: var(--muted);
+  padding: 10px 13px 2px;
+  border-top: 1px solid var(--rule);
 }
 
-.log__text {
-  flex: 1;
+.log > div:first-child .log__day {
+  border-top: none;
+}
+
+.log__silence {
+  font-size: 12px;
+  color: var(--proxy);
+  padding: 10px 13px 2px;
   font-family: var(--serif);
 }
 
-/* ------------------------------------------------------------ 代行中 */
+.log__more {
+  font-size: 12px;
+  color: var(--faint);
+  padding: 10px 13px;
+  text-align: center;
+  font-family: var(--mono);
+  letter-spacing: 0.08em;
+}
+
+.turn {
+  padding: 4px 13px 8px;
+}
+
+.turn__who {
+  display: block;
+  font-family: var(--mono);
+  font-size: 9.5px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  margin-bottom: 1px;
+}
+
+.turn--yours .turn__who {
+  color: var(--proxy);
+}
+
+.turn--theirs .turn__who {
+  color: var(--ink-dim);
+}
+
+.turn__text {
+  font-family: var(--serif);
+  font-size: 15px;
+  line-height: 1.85;
+}
+
+.turn--yours .turn__text {
+  padding-left: 10px;
+  border-left: 2px solid var(--proxy);
+}
+
+.turn--theirs .turn__text {
+  padding-left: 10px;
+  border-left: 2px solid var(--rule-strong);
+}
+
+.turn__note {
+  font-size: 11.5px;
+  color: var(--warn);
+  padding-left: 12px;
+  margin-top: 2px;
+}
+
+/* ------------------------------------------------------------ 代理人中 */
 
 .proxy {
   flex: 1;
@@ -829,7 +881,7 @@ p {
 /*
  * 帯・点表・年表・環——この四つで「関係は他人が数週間から数か月かけて築き、
  * あなたはその後ろの短い区間を受け取った」を、文章を読まずに見えるようにする。
- * 色の規則は本文と同じ。**茶が代行、墨があなた、朱が失ったぶん。**
+ * 色の規則は本文と同じ。**茶が代理人、墨があなた、朱が失ったぶん。**
  */
 
 .ribbon {
@@ -1084,7 +1136,7 @@ p {
   font-size: 10px;
 }
 
-/* 親密度の棒。代行が築いたぶん・あなたが足したぶん・失ったぶんを塗り分ける */
+/* 親密度の棒。代理人が築いたぶん・あなたが足したぶん・失ったぶんを塗り分ける */
 .meter__bar {
   display: flex;
 }
@@ -1103,4 +1155,152 @@ p {
     transparent 3px,
     transparent 6px
   );
+}
+
+/* ------------------------------------------------------------ 判断 */
+
+.decisions {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+
+.decision {
+  text-align: left;
+  border: 1px solid var(--rule-strong);
+  border-radius: var(--radius);
+  background: var(--sheet);
+  padding: 13px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.decision--on {
+  border-color: var(--ink);
+  background: var(--paper);
+}
+
+.decision__title {
+  font-family: var(--serif);
+  font-size: 16px;
+}
+
+.decision__body {
+  font-size: 12.5px;
+  color: var(--muted);
+  line-height: 1.7;
+}
+
+/* --------------------------------------------------------- 人格の寄せ方 */
+
+.slider {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 3px;
+  background: linear-gradient(to right, var(--ink), var(--proxy));
+  outline: none;
+}
+
+.slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--sheet);
+  border: 1.5px solid var(--ink);
+}
+
+.slider__ends {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11.5px;
+  color: var(--muted);
+}
+
+.slider__ends .num {
+  font-family: var(--mono);
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ------------------------------------------------------------ 相手の状態 */
+
+.statusbar {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  background: var(--sheet);
+  padding: 9px 12px;
+}
+
+.statusbar__name {
+  font-family: var(--serif);
+  font-size: 15px;
+}
+
+.statusbar__state {
+  margin-left: auto;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.tag-agent {
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  color: var(--proxy);
+  border: 1px solid var(--proxy);
+  border-radius: 2px;
+  padding: 0 4px;
+}
+
+/* ------------------------------------------------------------ 開示 */
+
+.reveal {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  border: 1px solid var(--ink);
+  border-radius: var(--radius);
+  background: var(--sheet);
+  padding: 14px;
+  animation: settle 420ms ease-out both;
+}
+
+@keyframes settle {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.reveal__name {
+  font-family: var(--serif);
+  font-size: 22px;
+  letter-spacing: 0.06em;
+  margin-bottom: 4px;
+}
+
+.replyrow {
+  display: flex;
+  gap: 8px;
+  border-top: 1px solid var(--rule);
+  padding-top: 10px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .reveal {
+    animation: none;
+  }
 }

@@ -3,7 +3,7 @@
  *
  * この作品でいちばん説明が要る部分——「関係は誰かが数週間から数か月かけて
  * 築いた」「あなたが受け取ったのは、その後ろの短い区間だけ」——を、
- * 文章ではなく**幅の比**で見せる。茶色が代行、黒があなた。
+ * 文章ではなく**幅の比**で見せる。茶色が代理人、黒があなた。
  *
  * 縮尺の取り方は lib/timeline.ts に切り出してある（年表と同じ割り当てを
  * 使わないと、二つの図が違うことを言い出す）。
@@ -17,7 +17,7 @@ export function Ribbon({
   horizon,
 }: {
   proxyDays: number;
-  /** 代行期間のうち、何日ぶんを塗るか（代行中は途中まで）。 */
+  /** 交流期間のうち、何日ぶんを塗るか（交流中は途中まで）。 */
   proxyFilled: number;
   /** 引き継いでから経った日数。 */
   elapsed: number;
@@ -33,7 +33,7 @@ export function Ribbon({
       <div className="ribbon__track">
         <div className="ribbon__proxy" style={{ flexBasis: `${share * 100}%` }}>
           <div className="ribbon__proxyFill" style={{ width: `${proxyRatio * 100}%` }} />
-          <span className="ribbon__caption">代行 {proxyDays} 日</span>
+          <span className="ribbon__caption">代理人 {proxyDays} 日</span>
         </div>
         <div className="ribbon__seam" aria-hidden="true" />
         <div className="ribbon__yours">
@@ -44,7 +44,7 @@ export function Ribbon({
         </div>
       </div>
       <div className="ribbon__marks">
-        <span>関係が築かれた期間</span>
+        <span>代理人が築いた期間</span>
         <span className="ribbon__seamLabel">引継</span>
         <span>あなたの期間</span>
       </div>

@@ -1,5 +1,5 @@
 /**
- * 代行期間を点で並べる。一点が一日。
+ * 交流期間を点で並べる。一点が一日。
  *
  * 「14 日」と書くより、点が 14 個あることの方が早い。90 日を選ぶと画面が
  * 点で埋まり、**それだけの時間を他人が使った**ことが数える前に分かる。
@@ -12,7 +12,7 @@ export function DayGrid({ days, filled, marks }: { days: number; filled: number;
   }
 
   return (
-    <div className="daygrid" role="img" aria-label={`代行期間 ${days} 日のうち ${filled} 日が経過`}>
+    <div className="daygrid" role="img" aria-label={`交流期間 ${days} 日のうち ${filled} 日が経過`}>
       {rows.map((row) => (
         <div className="daygrid__row" key={row[0]}>
           {row.map((day) => (

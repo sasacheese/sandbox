@@ -5,7 +5,7 @@ import { proxyShare, yourScale } from '../lib/timeline.ts';
  * 関係の年表。この作品でいちばん強い一枚。
  *
  * 縦が親密度、横が時間。線は**引継の縦線より前で全部立ち上がりきっている**。
- * 上がっていく区間は茶色（代行）で、そこから先の短い区間だけが黒（あなた）。
+ * 上がっていく区間は茶色（代理人）で、そこから先の短い区間だけが黒（あなた）。
  * 読み取ってほしいのは一つだけ——**この山を登ったのは自分ではない**。
  *
  * 縮尺の取り方は Ribbon と共通（lib/timeline.ts）。二つの図が違う割り当てを
@@ -15,7 +15,7 @@ export type ChartPerson = {
   id: string;
   name: string;
   metDay: number;
-  /** 引き継いだ時点の高さ（代行が築いたぶん）。 */
+  /** 引き継いだ時点の高さ（代理人が築いたぶん）。 */
   inherited: number;
   /** 今の高さ。 */
   current: number;
@@ -34,7 +34,7 @@ export function Chart({
 }: {
   people: readonly ChartPerson[];
   proxyDays: number;
-  /** 代行中は途中まで描く。引き継ぎ後は proxyDays と同じ。 */
+  /** 交流中は途中まで描く。引き継ぎ後は proxyDays と同じ。 */
   proxyFilled: number;
   elapsed: number;
   horizon: number;
@@ -45,7 +45,7 @@ export function Chart({
   const scale = yourScale(elapsed, horizon);
   const seamX = PAD.left + plotW * SEAM;
 
-  /** 代行期間の日を x へ。0 日目が左端、proxyDays が引継の線。 */
+  /** 交流期間の日を x へ。0 日目が左端、proxyDays が引継の線。 */
   const xProxy = (day: number): number => PAD.left + (plotW * SEAM * Math.min(day, proxyDays)) / Math.max(1, proxyDays);
   /** 引き継いだあとの日を x へ。 */
   const xYours = (day: number): number => seamX + (plotW * (1 - SEAM) * Math.min(day, scale)) / scale;
@@ -53,13 +53,13 @@ export function Chart({
 
   return (
     <figure className="chart">
-      <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label="関係の年表。代行期間に親密度が立ち上がり、引継以降はあなたの区間">
+      <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label="関係の年表。代理人同士の交流期間に親密度が立ち上がり、引継以降はあなたの区間">
         {/* 目安の横罫。数字は出さない（読ませたいのは高さの推移ではなく、山の位置） */}
         {[0, 25, 50, 75, 100].map((value) => (
           <line key={value} x1={PAD.left} x2={W - PAD.right} y1={y(value)} y2={y(value)} className="chart__grid" />
         ))}
 
-        {/* 代行の区間の地。ここが他人の時間であることを面で示す */}
+        {/* 代理人の区間の地。ここが他人の時間であることを面で示す */}
         <rect x={PAD.left} y={PAD.top} width={plotW * SEAM} height={plotH} className="chart__proxyArea" />
 
         {people.map((person) => {
@@ -74,7 +74,7 @@ export function Chart({
           const height = person.inherited * Math.max(0, Math.min(1, grown));
           return (
             <g key={person.id}>
-              {/* 代行が築いた区間。少し撓ませて、人の手で積まれたようには見せない */}
+              {/* 代理人が築いた区間。少し撓ませて、人の手で積まれたようには見せない */}
               <path
                 d={`M ${start} ${y(0)} Q ${(start + peak) / 2} ${y(height * 0.45)} ${peak} ${y(height)}`}
                 className="chart__proxyLine"
@@ -100,14 +100,14 @@ export function Chart({
           引継
         </text>
         <text x={PAD.left} y={H - PAD.bottom + 16} className="chart__axisText">
-          代行 {proxyDays} 日
+          代理人 {proxyDays} 日
         </text>
         <text x={W - PAD.right} y={H - PAD.bottom + 16} className="chart__axisText" textAnchor="end">
           あなた {elapsed > 0 ? `${elapsed} 日` : ''}
         </text>
       </svg>
       <figcaption className="chart__legend">
-        <span className="chart__key chart__key--proxy">代行が築いた</span>
+        <span className="chart__key chart__key--proxy">代理人が築いた</span>
         <span className="chart__key chart__key--yours">あなたが維持している</span>
       </figcaption>
     </figure>

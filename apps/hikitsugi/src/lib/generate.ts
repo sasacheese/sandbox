@@ -1,120 +1,130 @@
 /**
  * 引継書を組み立てる。
  *
- * 乱数は外から渡す。同じ申込から毎回同じ書類が出ないと、受け取ったものが
- * 「自分の関係」に見えない（読み直すたびに内容が変わる書類は、書類ではない）。
- * 保存するのは組み立てた結果の方で、この関数は一度しか呼ばれない。
+ * 乱数は外から渡す。読み直すたびに内容が変わる書類は書類ではないので、
+ * 組み立ては一度だけ行い、結果をそのまま保存する。
+ *
+ * **相手側の人間の判断も、ここで決めてしまう。** 本人が引き継ぐかどうかを
+ * 考え始める前から、向こうの答えは出ている——この順序が作品の芯なので、
+ * あとから抽選するのではなく、発行の瞬間に確定させる。
  */
 
-import { COMMUNITY, COMPANIONS, LEAK_TEMPLATES, LOG_LINES, NOTES, type CompanionSeed } from './pools.ts';
-import { isoTime, type Belief, type Companion, type Handover, type Intake, type LogEntry, type Pledge } from './types.ts';
+import { COUNTERPARTS, LEAK_TEMPLATES, NOTES, SCRIPT_SCALE, type CounterpartSeed } from './pools.ts';
+import {
+  isoTime,
+  type Belief,
+  type Counterpart,
+  type Exchange,
+  type Handover,
+  type Intake,
+  type Pledge,
+  type TheirDecision,
+} from './types.ts';
 
 export type Rand = () => number;
 
-/** 期間が長いほど、関係が増える。 */
-export function companionCount(days: number): number {
-  if (days <= 14) return 3;
-  if (days <= 30) return 4;
-  return 5;
-}
-
-function shuffle<T>(list: readonly T[], rand: Rand): T[] {
-  const out = [...list];
-  for (let i = out.length - 1; i > 0; i--) {
-    const j = Math.floor(rand() * (i + 1));
-    const a = out[i];
-    const b = out[j];
-    if (a !== undefined && b !== undefined) {
-      out[i] = b;
-      out[j] = a;
-    }
-  }
-  return out;
+function pick<T>(list: readonly T[], rand: Rand): T {
+  const item = list[Math.floor(rand() * list.length)];
+  if (item === undefined) throw new Error('空の候補から選ぼうとした');
+  return item;
 }
 
 /**
- * 親密度。
+ * 代理人同士の親密度。
  *
- * 期間が長いほど高く、後から関係が始まった相手ほど低い。上限を 95 にしてあるのは、
- * 100 にすると「完成した関係」を渡したことになるから。引き継ぐのは途中の関係。
+ * 人間相手の関係より高く出るようにしてある。代理人は返信が早く、相手の話を
+ * 忘れず、いつでも都合がつく。**人間には勝てない条件で築かれた関係**を
+ * 引き継ぐことになる、というのがこの数字の意味。上限は 95。
  */
-function closenessOf(days: number, index: number, rand: Rand): number {
-  const base = 34 + Math.min(days, 90) * 0.45 - index * 8 + rand() * 8;
-  return Math.max(18, Math.min(95, Math.round(base)));
+export function closenessOf(days: number, persona: number, rand: Rand): number {
+  const base = 48 + Math.min(days, 90) * 0.24 + persona * 0.16 + rand() * 6;
+  return Math.max(40, Math.min(95, Math.round(base)));
 }
 
-function beliefsOf(seed: CompanionSeed, intake: Intake, index: number, rand: Rand): Belief[] {
-  const fabricated = shuffle(seed.fabrications, rand)
-    .slice(0, index === 0 ? 3 : 2)
+/** 作り話の数は「好かれやすさ」で増える。申込画面ではそう言わない。 */
+export function fabricationCount(persona: number): number {
+  return Math.max(1, Math.min(3, 1 + Math.round(persona / 40)));
+}
+
+function beliefsOf(seed: CounterpartSeed, intake: Intake, rand: Rand): Belief[] {
+  const made = [...seed.fabrications]
+    .sort(() => rand() - 0.5)
+    .slice(0, fabricationCount(intake.persona))
     .map((text) => ({ text, fabricated: true }));
-  // 本当のことも混ざっている。混ざっているから、どれが嘘か覚えていられない
-  const real: Belief[] = index % 2 === 0 ? [{ text: `${intake.interest}に関心があること`, fabricated: false }] : [];
-  return shuffle([...fabricated, ...real], rand);
+  // 本当のことも同じ欄に混ざる。混ざっているから、どれが嘘か覚えていられない
+  return [...made, { text: `${intake.interest}に関心があること`, fabricated: false }].sort(() => rand() - 0.5);
+}
+
+/** 台本の日付は 90 日を基準に書いてあるので、選ばれた期間へ縮める。 */
+function exchangesOf(seed: CounterpartSeed, days: number): Exchange[] {
+  return seed.script.map((line) => ({
+    day: Math.max(1, Math.min(days, Math.round((line.day / SCRIPT_SCALE) * days))),
+    side: line.side,
+    text: line.text,
+    ...(line.fabricated ? { fabricated: true } : {}),
+    ...(line.silence ? { silence: Math.max(1, Math.round((line.silence / SCRIPT_SCALE) * days)) } : {}),
+  }));
+}
+
+/**
+ * 相手側の人間の判断。
+ *
+ * 「引き継ぐ」が最も多いが、半分には届かない。**引き継がれない可能性の方が
+ * 高い**という設計で、そこで初めて「では代理人同士はどうなるのか」という
+ * 問いが本人の側に立つ。
+ */
+export function theirDecisionOf(rand: Rand): TheirDecision {
+  const roll = rand();
+  if (roll < 0.42) return 'inherit';
+  if (roll < 0.72) return 'agent_only';
+  return 'refuse';
 }
 
 export function buildHandover(intake: Intake, now: Date, rand: Rand): Handover {
-  const chosen = shuffle(COMPANIONS, rand).slice(0, companionCount(intake.days));
-
-  const companions: Companion[] = chosen.map((seed, index) => ({
+  const seed = pick(COUNTERPARTS, rand);
+  const counterpart: Counterpart = {
     id: seed.id,
+    alias: 'A',
     name: seed.name,
-    profile: seed.profile,
+    relation: seed.relation,
     calls: seed.callsOf(intake.name),
-    closeness: closenessOf(intake.days, index, rand),
-    // 最初の相手は初日から。あとの相手は期間の中にばらける
-    metDay: index === 0 ? 1 : Math.max(2, Math.floor((intake.days * (index + rand())) / (chosen.length + 1))),
-    shared: [...shuffle(seed.topics, rand).slice(0, 2), ...(index === 0 ? [intake.interest] : [])],
+    closeness: closenessOf(intake.days, intake.persona, rand),
     secret: seed.secret,
-    beliefs: beliefsOf(seed, intake, index, rand),
+    beliefs: beliefsOf(seed, intake, rand),
     avoid: seed.avoid,
     joke: seed.joke,
-  }));
+  };
 
-  const pledges: Pledge[] = chosen.map((seed) => ({
-    id: `pledge-${seed.id}`,
-    to: seed.id,
-    body: seed.pledge.body,
-    dueDay: seed.pledge.dueDay,
+  const pledges: Pledge[] = seed.plans.map((plan, i) => ({
+    id: `pledge-${seed.id}-${i}`,
+    body: plan.body,
+    dueDay: plan.dueDay,
     status: 'pending',
   }));
 
-  const leaked = LEAK_TEMPLATES.map((template) =>
-    template({ name: intake.name, interest: intake.interest, habit: intake.habit, avoid: intake.avoid }),
-  );
-
-  const log = buildLog(intake.days, companions, intake.name, rand);
+  const exchanges = exchangesOf(seed, intake.days);
 
   return {
     serial: serialOf(now, rand),
     issuedAt: isoTime(now),
-    community: COMMUNITY,
     days: intake.days,
-    companions,
+    counterpart,
+    exchanges,
+    tally: {
+      // 台本は抜粋なので、実際のやり取りの件数は別に持つ
+      messages: seed.tally.messages,
+      secrets: seed.tally.secrets,
+      conflicts: seed.tally.conflicts,
+      plans: pledges.length,
+      otherAgents: 18 + Math.floor(rand() * 40),
+    },
     pledges,
-    leaked,
+    leaked: LEAK_TEMPLATES.map((template) =>
+      template({ name: intake.name, interest: intake.interest, habit: intake.habit, avoid: intake.avoid }),
+    ),
     notes: [...NOTES],
-    log,
+    theirs: theirDecisionOf(rand),
   };
-}
-
-/** 代行期間の記録。一日一行。淡々と、業務日誌の書式で。 */
-function buildLog(days: number, companions: readonly Companion[], name: string, rand: Rand): LogEntry[] {
-  const out: LogEntry[] = [];
-  let previous = '';
-  for (let day = 1; day <= days; day++) {
-    // 同じ行が二日続くと、生成したものだと一目で分かる。一度だけ引き直す
-    let line = LOG_LINES[Math.floor(rand() * LOG_LINES.length)] ?? '参加のみ。';
-    if (line === previous) line = LOG_LINES[Math.floor(rand() * LOG_LINES.length)] ?? '参加のみ。';
-    previous = line;
-    // その日までに関係が始まっている相手だけが出てくる
-    const available = companions.filter((c) => c.metDay <= day);
-    const who = available[Math.floor(rand() * Math.max(1, available.length))];
-    out.push({
-      day,
-      text: line.replace('{who}', who?.name ?? '参加者').replace('{name}', name),
-    });
-  }
-  return out;
 }
 
 const SERIAL_CHARS = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
@@ -125,10 +135,10 @@ function serialOf(now: Date, rand: Rand): string {
   const d = `${now.getDate()}`.padStart(2, '0');
   let tail = '';
   for (let i = 0; i < 4; i++) tail += SERIAL_CHARS[Math.floor(rand() * SERIAL_CHARS.length)];
-  return `HK-${y}${m}${d}-${tail}`;
+  return `RF-${y}${m}${d}-${tail}`;
 }
 
-/** 引き継ぎから何日経ったか。期限の判定に使う。 */
+/** 引き継ぎから何日経ったか。 */
 export function daysSinceHandover(handover: Handover, now: Date, rate = 1): number {
   const ms = now.getTime() - new Date(handover.issuedAt).getTime();
   return Math.max(0, Math.floor((ms / 86_400_000) * rate));

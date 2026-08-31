@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { DECAY_PER_DAY, effectiveCloseness, inheritedCloseness } from './closeness.ts';
 
-test('引き継いだ直後は代行が築いた値のまま', () => {
+test('引き継いだ直後は代理人が築いた値のまま', () => {
   assert.equal(effectiveCloseness(62, 0, 0), 62);
   assert.equal(inheritedCloseness(62), 62);
 });

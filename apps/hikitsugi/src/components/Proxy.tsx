@@ -1,18 +1,16 @@
 import { useEffect, useState } from 'react';
+import { PROXY_LINES } from '../lib/pools.ts';
 import { MS_PER_PROXY_DAY, useStore } from '../store.tsx';
 import { Chart } from './Chart.tsx';
 import { DayGrid } from './DayGrid.tsx';
+import { Exchanges } from './Exchanges.tsx';
 import { Ribbon } from './Ribbon.tsx';
 
 /**
- * 代行期間。
+ * 交流期間。本人は何もしない。
  *
- * 本人は何もしない。**待つだけ**という時間をここに置いているのは、
- * 関係が自分の手を離れたところで作られていく感じを、体験として通すため。
- *
- * 引継書の中身はすでに決まっている（申込の時点で組み立ててある）。ここで
- * 流れているのは、決まったものを一日ずつ開示しているだけ。見ない設定を
- * 選んだ人には、同じ時間だけ封をした画面を見せる。
+ * 相手は「A」としか表示されない。名前も写真も出ない。**誰と親しくなって
+ * いるのかを知らないまま、親密度だけが上がっていく**のを見せる。
  */
 export function Proxy() {
   const { intake, handover, receive } = useStore();
@@ -30,20 +28,15 @@ export function Proxy() {
   if (!intake || !handover) return null;
   const day = Math.min(elapsed, intake.days);
   const done = elapsed >= intake.days;
-  const shown = handover.log.slice(Math.max(0, day - 3), day);
-  const people = handover.companions.map((c) => ({
-    id: c.id,
-    name: c.name,
-    metDay: c.metDay,
-    inherited: c.closeness,
-    current: c.closeness,
-  }));
+  const { counterpart } = handover;
+  const shown = handover.exchanges.filter((e) => e.day <= day).slice(-4);
+  const line = PROXY_LINES[day % PROXY_LINES.length] ?? '交流を継続。';
 
   return (
     <div className="screen screen--flow">
       <header className="brand">
         <span className="brand__name">関係引継サービス</span>
-        <span className="brand__no">代行中 / IN PROXY</span>
+        <span className="brand__no">交流中 / IN CONTACT</span>
       </header>
 
       <Ribbon proxyDays={intake.days} proxyFilled={day} elapsed={0} horizon={14} />
@@ -52,7 +45,7 @@ export function Proxy() {
         <div>
           <div className="proxy__day">{`${day}`.padStart(2, '0')}</div>
           <div className="proxy__of">
-            / {intake.days} 日　{handover.community}
+            / {intake.days} 日　あなたの代理人 と {counterpart.alias} の代理人
           </div>
         </div>
 
@@ -61,11 +54,25 @@ export function Proxy() {
         </div>
 
         {intake.watch ? (
-          <div className="proxy__line">
-            {shown.map((entry) => (
-              <div key={entry.day}>{entry.text}</div>
-            ))}
-          </div>
+          <>
+            <p className="proxy__line">{line}</p>
+            <Chart
+              people={[
+                {
+                  id: counterpart.id,
+                  name: counterpart.alias,
+                  metDay: 1,
+                  inherited: counterpart.closeness,
+                  current: counterpart.closeness,
+                },
+              ]}
+              proxyDays={intake.days}
+              proxyFilled={day}
+              elapsed={0}
+              horizon={14}
+            />
+            {shown.length > 0 ? <Exchanges exchanges={shown} alias={counterpart.alias} /> : null}
+          </>
         ) : (
           <div className="sealed">
             記録は封をしています。
@@ -74,17 +81,11 @@ export function Proxy() {
           </div>
         )}
 
-        {intake.watch ? (
-          <Chart people={people} proxyDays={intake.days} proxyFilled={day} elapsed={0} horizon={14} />
-        ) : null}
-
-        <p className="sub">
-          {done ? '代行期間が終了しました。' : `${intake.name} として参加しています。`}
-        </p>
+        <p className="sub">{done ? '交流期間が終了しました。' : `${intake.name} として交流しています。`}</p>
       </div>
 
       <button className="btn" type="button" disabled={!done} onClick={() => void receive()}>
-        {done ? '引継書を受け取る' : '代行中'}
+        {done ? '引継書を受け取る' : '交流中'}
         <span className="btn__hint">{done ? 'RECEIVE' : `${intake.days - day} DAYS LEFT`}</span>
       </button>
     </div>

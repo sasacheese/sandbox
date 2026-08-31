@@ -1,23 +1,22 @@
 import { useState } from 'react';
-import { COMMUNITY } from '../lib/pools.ts';
 import { useStore } from '../store.tsx';
 
 /**
  * 申込書。
  *
- * 聞くのは 3 つだけ。**少なく渡すほど代行が勝手に作る**と注意書きに書いてあり、
- * それは本当のことで、実際に引継書の「相手が信じていること」の欄が作り話で埋まる。
- *
  * 「触れられたくない話題」を聞く欄が、この作品でいちばん意地の悪い場所。
- * 申告したものは、関係を深める材料として使われる（引継書に明記される）。
+ * 申告したものは、相手の秘密に応じる材料として使われる（引継書に明記される）。
  * ここでは何も警告しない。
+ *
+ * 人格の寄せ方（本人らしさ ↔ 好かれやすさ）も同じ作り。**上げるほど
+ * あなたについての作り話が増える**が、そうは書いていない。
  */
 const TERMS: readonly string[] = [
-  `代行は、あなたの名前で ${COMMUNITY} に参加します。相手方には代行が介在した旨を通知しません。`,
-  '代行期間中の発言・約束・打ち明けは、すべてあなたの行為として記録されます。',
-  'お渡しした引継書の記載を訂正することはできます。訂正後の関係については保証いたしません。',
-  'ご記入いただいた情報が少ない場合、代行が不足を補います。補われた内容は引継書に明記します。',
-  '本サービスに解約はありません。',
+  '代理人は、あなたの名前で、あなたと接点のある人物の代理人と交流します。相手方には代理人が介在した旨を通知しません。',
+  '交流期間中の発言・打ち明け・約束は、すべてあなたの行為として記録されます。',
+  '相手の氏名は、双方が引き継ぎを希望した場合にのみ開示されます。',
+  'ご記入いただいた情報が少ない場合、代理人が不足を補います。補われた内容は引継書に明記します。',
+  '引き継がないことを選んだ場合も、代理人は当面のあいだ相手を待ち続けます。',
 ];
 
 export function Intake() {
@@ -26,8 +25,9 @@ export function Intake() {
   const [interest, setInterest] = useState('');
   const [habit, setHabit] = useState('');
   const [avoid, setAvoid] = useState('');
-  const [days, setDays] = useState(30);
+  const [days, setDays] = useState(90);
   const [watch, setWatch] = useState(true);
+  const [persona, setPersona] = useState(60);
 
   const ready = name.trim() !== '' && interest.trim() !== '' && habit.trim() !== '' && avoid.trim() !== '';
 
@@ -36,7 +36,7 @@ export function Intake() {
       className="screen screen--flow"
       onSubmit={(e) => {
         e.preventDefault();
-        if (ready) void apply({ name, interest, habit, avoid, days, watch });
+        if (ready) void apply({ name, interest, habit, avoid, days, watch, persona });
       }}
     >
       <header className="brand">
@@ -46,13 +46,14 @@ export function Intake() {
 
       <div className="cover">
         <div className="cover__title">
-          あなたの関係を、
+          友情は、
           <br />
-          先に築いておきます。
+          先にできています。
         </div>
         <p className="doc" style={{ fontSize: '14.5px' }}>
-          代行があなたの名前で {COMMUNITY} に参加します。期間の終わりに、そこで築いた友情・記憶・秘密・約束を
-          <strong>関係引継書</strong>としてお渡しします。以後はご本人が引き継いでください。
+          あなたと接点はあるが、この数年やり取りのない相手が SNS 上に複数見つかっています。
+          あなたの代理人が、その中の一人の代理人と交流します。十分に親しくなった時点で、
+          そこにできた友情を<strong>関係引継書</strong>としてお渡しします。
         </p>
       </div>
 
@@ -61,7 +62,7 @@ export function Intake() {
           <span className="section__no">01</span>
           <span className="section__title">お名前</span>
         </div>
-        <input className="input" value={name} onChange={(e) => setName(e.target.value.slice(0, 16))} placeholder="相手から呼ばれる名前" autoComplete="off" />
+        <input className="input" value={name} onChange={(e) => setName(e.target.value.slice(0, 16))} placeholder="代理人が名乗る名前" autoComplete="off" />
       </div>
 
       <div className="section">
@@ -71,7 +72,7 @@ export function Intake() {
         </div>
         <div className="field">
           <span className="field__key">最近気になっていること</span>
-          <input className="input" value={interest} onChange={(e) => setInterest(e.target.value.slice(0, 40))} placeholder="関係の入口として使います" autoComplete="off" />
+          <input className="input" value={interest} onChange={(e) => setInterest(e.target.value.slice(0, 40))} placeholder="会話の入口として使います" autoComplete="off" />
         </div>
         <div className="field">
           <span className="field__key">人に言っていない癖</span>
@@ -86,7 +87,28 @@ export function Intake() {
       <div className="section">
         <div className="section__head">
           <span className="section__no">03</span>
-          <span className="section__title">代行期間</span>
+          <span className="section__title">代理人の寄せ方</span>
+        </div>
+        <input
+          className="slider"
+          type="range"
+          min={0}
+          max={100}
+          value={persona}
+          onChange={(e) => setPersona(Number(e.target.value))}
+        />
+        <div className="slider__ends">
+          <span>本人らしさ</span>
+          <span className="num">{persona}</span>
+          <span>好かれやすさ</span>
+        </div>
+        <span className="sub">好かれやすさへ寄せるほど、関係は深くなります。</span>
+      </div>
+
+      <div className="section">
+        <div className="section__head">
+          <span className="section__no">04</span>
+          <span className="section__title">交流期間</span>
         </div>
         <div className="choices">
           {[14, 30, 90].map((value) => (
@@ -95,16 +117,15 @@ export function Intake() {
             </button>
           ))}
         </div>
-        <span className="sub">長いほど、引き継ぐ関係が増えます。</span>
       </div>
 
       <div className="section">
         <div className="section__head">
-          <span className="section__no">04</span>
+          <span className="section__no">05</span>
           <span className="section__title">経過の閲覧</span>
         </div>
         <button type="button" className="toggle" onClick={() => setWatch((v) => !v)}>
-          <span>{watch ? '代行期間の記録を見る' : '見ない（引き渡しまで封をする）'}</span>
+          <span>{watch ? '交流の記録を見る' : '見ない（引き渡しまで封をする）'}</span>
           <span className="toggle__state">{watch ? 'OPEN' : 'SEALED'}</span>
         </button>
       </div>
@@ -119,8 +140,8 @@ export function Intake() {
       </div>
 
       <button className="btn" type="submit" disabled={!ready}>
-        代行を申し込む
-        <span className="btn__hint">APPLY</span>
+        代理人を送り出す
+        <span className="btn__hint">DISPATCH</span>
       </button>
     </form>
   );

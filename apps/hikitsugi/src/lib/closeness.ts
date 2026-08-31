@@ -3,7 +3,7 @@
  *
  * 三つの足し合わせで決まる。
  *
- * 1. **代行が築いたぶん**（引継書に書かれた値）
+ * 1. **代理人が築いたぶん**（引継書に書かれた値）
  * 2. **あなたの応答**（覚えていれば少し上がり、忘れれば下がる）
  * 3. **放置したぶん**（引き継いでから経った日数だけ、じわじわ下がる）
  *
@@ -20,7 +20,7 @@ export function effectiveCloseness(base: number, delta: number, elapsedDays: num
   return Math.max(0, Math.min(100, Math.round(decayed)));
 }
 
-/** 代行が築いたぶんだけの値（引き継いだ時点の高さ）。図の茶色の部分に使う。 */
+/** 代理人が築いたぶんだけの値（引き継いだ時点の高さ）。図の茶色の部分に使う。 */
 export function inheritedCloseness(base: number): number {
   return Math.max(0, Math.min(100, Math.round(base)));
 }
