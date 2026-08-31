@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Chat } from './components/Chat.tsx';
 import { ChatList } from './components/ChatList.tsx';
 import { Friends } from './components/Friends.tsx';
@@ -8,6 +8,7 @@ import { Intake } from './components/Intake.tsx';
 import { Settings } from './components/Settings.tsx';
 import { TabBar, type Tab } from './components/TabBar.tsx';
 import { unlocked } from './lib/gate.ts';
+import { applyUpdate, subscribeUpdate, updateReady } from './lib/updates.ts';
 import { bubblesOf, pendingAsksOf, unreadOf } from './lib/threads.ts';
 import { useStore } from './store.tsx';
 
@@ -57,11 +58,33 @@ export function App() {
 
   return (
     <div className="app">
+      <UpdateBar />
       {tab === 'mine' ? <ChatList kind="mine" onOpen={setOpenId} /> : null}
       {tab === 'proxy' ? <ChatList kind="proxy" onOpen={setOpenId} /> : null}
       {tab === 'friends' ? <Friends onOpen={setOpenId} /> : null}
       {tab === 'settings' ? <Settings /> : null}
       <TabBar current={tab} onChange={setTab} badges={{ mine: unread('mine'), proxy: unread('proxy') }} />
+    </div>
+  );
+}
+
+/**
+ * 新しい版が来たことの知らせ。
+ *
+ * 勝手に入れ替えない。眺めているあいだに画面が差し替わるのが困るので、押される
+ * まで待つ。**ここが無いと、端末に入れたぶんは古い版のまま動き続ける。**
+ */
+function UpdateBar() {
+  const [ready, setReady] = useState(() => updateReady());
+  useEffect(() => subscribeUpdate(() => setReady(updateReady())), []);
+  if (!ready) return null;
+
+  return (
+    <div className="updatebar">
+      <span className="updatebar__text">新しい版があります。</span>
+      <button type="button" className="updatebar__btn" onClick={() => applyUpdate()}>
+        更新
+      </button>
     </div>
   );
 }
