@@ -1822,7 +1822,7 @@ p {
  */
 .tally {
   position: relative;
-  margin: 13px var(--pad) 4px;
+  margin: 13px var(--pad) 12px;
   padding: 18px 18px 16px;
   border-radius: var(--r-card);
   background: var(--paper);
@@ -1938,9 +1938,24 @@ p {
   text-shadow: 0 0 10px var(--proxy-glow);
 }
 
+/*
+ * 友達タブの入れ物。
+ *
+ * トーク一覧（.rows）は白い面を全幅に敷くが、こちらは**丸いカードが地の上に
+ * 浮かぶ**形。同じ入れ物を使い回していたせいで、丸いカードの後ろに角の尖った
+ * 白い面が全幅で見えていた。
+ */
+.fgroups {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  padding-bottom: 96px;
+}
+
 .fgroup {
   display: flex;
   flex-direction: column;
+  /* 上の集計カード（.tally）と左右の位置を揃える */
   margin: 0 var(--pad) 12px;
   background: var(--paper);
   border-radius: var(--r-card);

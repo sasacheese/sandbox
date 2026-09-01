@@ -96,7 +96,7 @@ export function Friends({ onOpen }: { onOpen: (threadId: string) => void }) {
         </p>
       </div>
 
-      <div className="rows">
+      <div className="fgroups">
         {groups
           .filter((group) => group.people.length > 0)
           .map((group) => (
