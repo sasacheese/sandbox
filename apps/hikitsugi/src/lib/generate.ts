@@ -12,9 +12,10 @@
 import { closenessOf as closenessBase } from './closeness.ts';
 import { loopAt, plans, type Plan } from './loop.ts';
 import { AUTO_REPLIES, COUNTERPARTS, NOTES, SCRIPT_SCALE, type CounterpartSeed, type Source } from './pools.ts';
-import { SAYS } from './agent.ts';
+import { callOf, SAYS } from './agent.ts';
+import type { Manner } from './slips.ts';
 import { askGraceMs, bubblesOf, DEFAULT_GAP_MS, isReady } from './threads.ts';
-import { digestOf, habitsOf, type Message, type Transcript } from './transcript.ts';
+import { digestOf, habitsOf, toneOf, type Message, type Transcript } from './transcript.ts';
 import {
   isoTime,
   type Belief,
@@ -404,6 +405,24 @@ export function buildHandover(
       ...rules.filter((r) => r.kind === 'note' && (!r.target || r.target === seed.name)).map((r) => `本人からの申し送り：「${r.text}」`),
     ],
     theirs: thread.theirs ?? 'refuse',
+  };
+}
+
+/**
+ * 引継書の作法。自分で打った文を照らす材料。
+ *
+ * **引継書がすでに持っているものだけ。**呼び方は代理が使っていた形、句点と
+ * 長さと返信の速さは過去ログの集計、触れてはいけないことは台本のもの。
+ */
+export function mannerOf(thread: Thread, transcript: Transcript | undefined, intake: Intake): Manner | null {
+  const seed = thread.seed;
+  if (!seed) return null;
+  return {
+    address: callOf(thread.title),
+    name: thread.title,
+    calls: seed.callsOf(intake.name),
+    avoid: seed.avoid,
+    tone: transcript ? toneOf(transcript) : null,
   };
 }
 

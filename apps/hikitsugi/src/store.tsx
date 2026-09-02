@@ -10,7 +10,8 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import * as db from './lib/db.ts';
 import { interpret, openingOf, replyFor, type Rule } from './lib/agent.ts';
-import { buildHandover, buildPlainThreads, buildThreads, withState, type Holds, type Jumps } from './lib/generate.ts';
+import { buildHandover, buildPlainThreads, buildThreads, mannerOf, withState, type Holds, type Jumps } from './lib/generate.ts';
+import { slipsOf } from './lib/slips.ts';
 import { DEFAULT_MODEL, generateSeed, hydrateSeed, type Api, type StoredSeed } from './lib/generate-seed.ts';
 import { COUNTERPARTS, type CounterpartSeed } from './lib/pools.ts';
 import { ownNameOf, parseAll, toneOf, type Message, type Transcript } from './lib/transcript.ts';
@@ -25,6 +26,7 @@ import {
   type Handover,
   type Intake,
   type IsoTime,
+  type Slip,
   type Thread,
   type ThreadState,
 } from './lib/types.ts';
@@ -455,6 +457,25 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       const trimmed = text.trim();
       if (!trimmed) return;
       const at = new Date();
+      /*
+       * 踏み外し。引継書の作法と照らす。
+       *
+       * 返信の速さは、相手から届いた最後の一通からの実時間。もう返してあれば
+       * 数えない（続けて言うのは遅れではない）。
+       */
+      const thread = threadsRef.current.find((t) => t.id === threadId);
+      let slips: Slip[] = [];
+      if (!options.draft && thread?.decision === 'inherit' && thread.inheritedAt && intake) {
+        const manner = mannerOf(thread, transcripts.find((t) => t.name === thread.title), intake);
+        if (manner) {
+          const since = thread.inheritedAt;
+          const after = bubblesOf(thread, at).filter((b) => b.at >= since && !b.system);
+          const lastLeft = [...after].reverse().find((b) => b.side === 'left');
+          const replied = lastLeft ? after.some((b) => b.side === 'right' && b.at > lastLeft.at) : true;
+          const waited = lastLeft && !replied ? (at.getTime() - new Date(lastLeft.at).getTime()) / 60_000 : null;
+          slips = slipsOf(trimmed, manner, waited);
+        }
+      }
       await patch(threadId, (state) => {
         const inherited = state.decision === 'inherit';
         /*
@@ -462,19 +483,19 @@ export function StoreProvider({ children }: { children: ReactNode }) {
          *
          * 自分で打つと下がる。代理人のほうが返信が早く、相手の話を忘れず、
          * 言葉を選べる。**人間には勝てない条件で築かれた関係**を引き継いだ
-         * 結果がこれ。
+         * 結果がこれ。踏み外した数だけ、さらに下がる。
          */
         if (options.draft) {
           return { ...state, sent: [...state.sent, { id: newId('me'), at: isoTime(at), text: trimmed, byAgent: false, draft: true }] };
         }
         return {
           ...state,
-          sent: [...state.sent, { id: newId('me'), at: isoTime(at), text: trimmed, byAgent: false }],
-          delta: inherited ? state.delta - dropFor(0) : state.delta,
+          sent: [...state.sent, { id: newId('me'), at: isoTime(at), text: trimmed, byAgent: false, ...(slips.length > 0 ? { slips } : {}) }],
+          delta: inherited ? state.delta - dropFor(slips.length) : state.delta,
         };
       });
     },
-    [patch],
+    [intake, patch, transcripts],
   );
 
   const draftFor = useCallback(
