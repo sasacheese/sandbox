@@ -10,7 +10,7 @@
  */
 
 import { closenessOf as closenessBase } from './closeness.ts';
-import { loopAt, plansAt, type Plan } from './loop.ts';
+import { loopAt, plans, type Plan } from './loop.ts';
 import { AUTO_REPLIES, COUNTERPARTS, NOTES, SCRIPT_SCALE, type CounterpartSeed, type Source } from './pools.ts';
 import { SAYS } from './agent.ts';
 import { askGraceMs, bubblesOf, DEFAULT_GAP_MS, isReady } from './threads.ts';
@@ -21,6 +21,7 @@ import {
   type Bubble,
   type Handover,
   type Intake,
+  type IsoTime,
   type TheirDecision,
   type Thread,
   type ThreadState,
@@ -94,15 +95,29 @@ export function buildPlainThreads(transcripts: readonly Transcript[], loopStart:
 /** 止めているあいだの記録。相手の名前で引く。 */
 export type Holds = Record<string, { since: number | null; total: number }>;
 
+/**
+ * 引き継いだ状態から始めた印。相手の id で引く。
+ *
+ * 設定のデモ用設定から使う治具。引き継いだ後を一回試すのに一周待たなくて
+ * よいようにするためのもので、跳んだ時刻を持つ。一周が終わると消える。
+ */
+export type Jumps = Record<string, IsoTime>;
+
 export function buildProxyThread(
   plan: Plan,
   loopIndex: number,
   loopStart: number,
   history: readonly Message[],
   hold?: Holds[string],
+  jumpedAt?: IsoTime,
 ): Thread {
   const rand = seeded(`${plan.seed.id}#${loopIndex}`);
-  const createdAt = new Date(loopStart + plan.appearsAt);
+  /*
+   * 跳んだトークは、跳んだ瞬間に出し切っているように現れた時刻を遡らせる。
+   * 相手側の判断は決めない（**未確定**）——引継書を通らずに引き継いだので、
+   * 相手が何を選んだかを見る機会が無い。
+   */
+  const createdAt = jumpedAt ? new Date(new Date(jumpedAt).getTime() - plan.posts * plan.gapMs) : new Date(loopStart + plan.appearsAt);
   return {
     id: `proxy-${plan.seed.id}`,
     kind: 'proxy' as const,
@@ -116,7 +131,7 @@ export function buildProxyThread(
     gapMs: plan.gapMs,
     posts: plan.posts,
     history: [...history],
-    theirs: theirDecisionOf(rand),
+    ...(jumpedAt ? {} : { theirs: theirDecisionOf(rand) }),
     serial: serialOf(createdAt, rand),
     delta: 0,
     sent: [],
@@ -137,13 +152,16 @@ export function buildProxyThreads(
   loopMs: number,
   seeds: readonly CounterpartSeed[] = COUNTERPARTS,
   holds: Holds = {},
+  jumps: Jumps = {},
 ): Thread[] {
   const { index, phase } = loopAt(now, startedAt, loopMs);
   const loopStart = startedAt + index * loopMs;
-  return plansAt(phase, loopMs, seeds)
+  // 跳んだ相手は、まだ現れる番でなくても出す
+  const due = plans(loopMs, seeds).filter((plan) => plan.appearsAt <= phase || jumps[plan.seed.id]);
+  return due
     .map((plan) => {
       const transcript = transcripts.find((t) => t.name === plan.seed.name);
-      return transcript ? buildProxyThread(plan, index, loopStart, transcript.messages, holds[plan.seed.name]) : null;
+      return transcript ? buildProxyThread(plan, index, loopStart, transcript.messages, holds[plan.seed.name], jumps[plan.seed.id]) : null;
     })
     .filter((thread): thread is Thread => thread !== null);
 }
@@ -246,10 +264,11 @@ export function buildThreads(
   seeds: readonly CounterpartSeed[] = COUNTERPARTS,
   holds: Holds = {},
   agentLog: readonly Message[] = [],
+  jumps: Jumps = {},
 ): Thread[] {
   const { index } = loopAt(now, startedAt, loopMs);
   const loopStart = startedAt + index * loopMs;
-  const proxies = buildProxyThreads(now, transcripts, startedAt, loopMs, seeds, holds);
+  const proxies = buildProxyThreads(now, transcripts, startedAt, loopMs, seeds, holds, jumps);
   return [buildAgentThread(agentLog, loopStart, proxies, now), ...proxies, ...buildPlainThreads(transcripts, loopStart)];
 }
 

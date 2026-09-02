@@ -10,7 +10,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import * as db from './lib/db.ts';
 import { interpret, openingOf, replyFor, type Rule } from './lib/agent.ts';
-import { buildHandover, buildPlainThreads, buildThreads, withState, type Holds } from './lib/generate.ts';
+import { buildHandover, buildPlainThreads, buildThreads, withState, type Holds, type Jumps } from './lib/generate.ts';
 import { DEFAULT_MODEL, generateSeed, hydrateSeed, type Api, type StoredSeed } from './lib/generate-seed.ts';
 import { COUNTERPARTS, type CounterpartSeed } from './lib/pools.ts';
 import { ownNameOf, parseAll, type Message, type Transcript } from './lib/transcript.ts';
@@ -53,8 +53,12 @@ export type Settings = {
   startedAt: IsoTime;
 };
 
-/** 本人が触った跡。一巡が終わると空になる。 */
-export type Progress = { loop: number; states: Record<string, ThreadState> };
+/**
+ * 本人が触った跡。一巡が終わると空になる。
+ *
+ * `jumps` は治具——引き継いだ状態から始めた相手と、その時刻。進行と一緒に流す。
+ */
+export type Progress = { loop: number; states: Record<string, ThreadState>; jumps?: Jumps };
 
 const EMPTY_PROGRESS: Progress = { loop: 0, states: {} };
 const EMPTY_STATE: ThreadState = { sent: [], answers: {}, delta: 0 };
@@ -113,6 +117,13 @@ export type Store = {
   /** 代理人からの確認に答える。答えないと代理人が埋める。 */
   answerAsk: (threadId: string, askId: string, answer: AskAnswer) => Promise<void>;
   decide: (threadId: string, decision: Decision) => Promise<void>;
+  /**
+   * 治具。その相手を、引き継いだ状態から始める。
+   *
+   * 引き継いだ後を一回試すのに一周待たなくてよいようにするためのもの。
+   * 相手側の判断は決めない。
+   */
+  startInherited: (seedId: string) => Promise<void>;
   setLoopMs: (loopMs: number) => Promise<void>;
   reset: () => Promise<void>;
 };
@@ -263,10 +274,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     if (transcripts.length === 0) return [];
     // 代理応答がオフのあいだは、自分のトークだけが並ぶ普通のメッセンジャー
     const built = intake
-      ? buildThreads(now, transcripts, startedAt, settings.loopMs, seeds, rulebook.holds, agentLog)
+      ? buildThreads(now, transcripts, startedAt, settings.loopMs, seeds, rulebook.holds, agentLog, progress.jumps ?? {})
       : buildPlainThreads(transcripts, startedAt);
     return built.map((thread) => withState(thread, progress.states[thread.id]));
-  }, [agentLog, intake, now, progress.states, rulebook.holds, seeds, settings.loopMs, startedAt, transcripts]);
+  }, [agentLog, intake, now, progress.jumps, progress.states, rulebook.holds, seeds, settings.loopMs, startedAt, transcripts]);
 
   const threadsRef = useRef(threads);
   useEffect(() => {
@@ -489,6 +500,26 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     [patch],
   );
 
+  const startInherited = useCallback(
+    async (seedId: string) => {
+      const at = isoTime(new Date());
+      const current = progressRef.current;
+      const threadId = `proxy-${seedId}`;
+      const next: Progress = {
+        ...current,
+        jumps: { ...(current.jumps ?? {}), [seedId]: at },
+        states: {
+          ...current.states,
+          [threadId]: { ...(current.states[threadId] ?? EMPTY_STATE), decision: 'inherit', inheritedAt: at },
+        },
+      };
+      progressRef.current = next;
+      setProgress(next);
+      await save(KV_PROGRESS, next);
+    },
+    [save],
+  );
+
   const setLoopMs = useCallback(
     async (loopMs: number) => {
       // 速さを変えたら一巡目の頭から。途中で伸縮させると進行が飛ぶ
@@ -553,6 +584,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       markRead,
       answerAsk,
       decide,
+      startInherited,
       setLoopMs,
       reset,
     };
@@ -582,6 +614,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     send,
     setLoopMs,
     settings,
+    startInherited,
     threads,
   ]);
 

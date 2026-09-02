@@ -4,7 +4,8 @@ import { useStore } from '../store.tsx';
 
 /** 設定。作品の外側の都合だけ置く。作り込まない。 */
 export function Settings() {
-  const { settings, setLoopMs, reset, persistent, intake, threads, loop, transcripts, own, lab, disableLab, appendTexts, seeds } = useStore();
+  const { settings, setLoopMs, reset, persistent, intake, threads, loop, transcripts, own, lab, disableLab, appendTexts, seeds, startInherited } =
+    useStore();
   const file = useRef<HTMLInputElement>(null);
   const [added, setAdded] = useState<number | null>(null);
   const generated = seeds.filter((seed) => seed.generated).length;
@@ -145,6 +146,36 @@ export function Settings() {
             作品として見せるための項目です。代理のトークは順に出てきて順に終わり、全部出し切ると最初に戻ります（引き継いだ相手も、答えた確認も残りません）。
             短くするほど一通ごとの間隔が詰まります。変えると一周目の最初から始まります。
           </span>
+
+          {lab ? (
+            <>
+              <span className="field__key" style={{ marginTop: '18px' }}>
+                引き継いだ状態から始める
+              </span>
+              <div className="choices">
+                {seeds
+                  .filter((seed) => transcripts.some((t) => t.name === seed.name))
+                  .map((seed) => {
+                    const thread = threads.find((t) => t.seedId === seed.id);
+                    const done = thread?.decision === 'inherit';
+                    return (
+                      <button
+                        key={seed.id}
+                        type="button"
+                        className={`opt${done ? ' opt--on' : ''}`}
+                        disabled={done}
+                        onClick={() => void startInherited(seed.id)}
+                      >
+                        {seed.name}
+                      </button>
+                    );
+                  })}
+              </div>
+              <span className="sub">
+                押した相手は、その場で引き継ぎ済みになってトークへ移ります。やり取りは出し切った状態で、相手側がどうしたかは決めません。一周が終わると元に戻ります。
+              </span>
+            </>
+          ) : null}
         </section>
       </div>
     </>

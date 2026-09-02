@@ -12,6 +12,7 @@ import {
   withState,
 } from './generate.ts';
 import { DEFAULT_LOOP_MS, plans } from './loop.ts';
+import { postsShown } from './threads.ts';
 import { SAMPLE_TRANSCRIPTS } from './sample.ts';
 import { parseAll } from './transcript.ts';
 import { isoTime, type Intake, type Thread } from './types.ts';
@@ -191,4 +192,20 @@ test('本人が触った跡は、組み立て直しても残る', () => {
   assert.equal(applied.serial, thread.serial);
   // 跡が無ければ、まっさらのまま
   assert.deepEqual(withState(thread, undefined), thread);
+});
+
+test('治具：引き継いだ状態から始めると、順番でなくても出し切って現れる', () => {
+  // 一周の頭では shiraishi はまだ現れていない
+  assert.ok(!buildProxyThreads(NOW, TRANSCRIPTS, START, LOOP).some((t) => t.seedId === 'shiraishi'));
+  const jumpedAt = isoTime(NOW);
+  const threads = buildProxyThreads(NOW, TRANSCRIPTS, START, LOOP, undefined, {}, { shiraishi: jumpedAt });
+  const jumped = threads.find((t) => t.seedId === 'shiraishi');
+  assert.ok(jumped, '跳んだ相手が出ていない');
+  // 跳んだ瞬間に全部出ている
+  assert.equal(postsShown(jumped, NOW), jumped.posts);
+  // 相手側の判断は決めない
+  assert.equal(jumped.theirs, undefined);
+  // 跳んでいない相手はこれまでどおり
+  const other = threads.find((t) => t.seedId === 'sugano');
+  assert.ok(other?.theirs);
 });
