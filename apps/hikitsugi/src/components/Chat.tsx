@@ -4,7 +4,8 @@ import { effectiveCloseness } from '../lib/closeness.ts';
 import { DRAFT_LABEL } from '../lib/draft.ts';
 import { clockTime, closenessLabel } from '../lib/format.ts';
 import { bubblesOf, daysSinceInherit, isHeld, isReady, nextPost, storyDay } from '../lib/threads.ts';
-import type { AskAnswer, Bubble, Thread } from '../lib/types.ts';
+import { FEEL_LABEL } from '../lib/agent.ts';
+import type { AskAnswer, Bubble, FeelingAnswer, Thread } from '../lib/types.ts';
 import { useStore } from '../store.tsx';
 import { Avatar } from './Avatar.tsx';
 
@@ -21,7 +22,7 @@ import { Avatar } from './Avatar.tsx';
  *   引き継いだトーク　：打てる。隣に「代理人に任せる」が付く
  */
 export function Chat({ thread, onBack, onOpenHandover }: { thread: Thread; onBack: () => void; onOpenHandover: () => void }) {
-  const { now, send, draftFor, delegate, markRead, checkHuman, answerAsk, handoverFor, tellAgent, own } = useStore();
+  const { now, send, draftFor, delegate, markRead, checkHuman, answerAsk, answerFeeling, handoverFor, tellAgent, own } = useStore();
   const [draft, setDraft] = useState('');
   const suggestion = draftFor(thread.id);
   /*
@@ -176,6 +177,9 @@ export function Chat({ thread, onBack, onOpenHandover }: { thread: Thread; onBac
                 // 代理とのトークに出した確認は、相手のトークの札と同じもの
                 if (bubble.ask) void answerAsk(bubble.ask.threadId ?? thread.id, bubble.ask.id, answer);
               }}
+              onFeel={(answer) => {
+                if (bubble.poll) void answerFeeling(bubble.poll.threadId, answer);
+              }}
             />
           );
         })}
@@ -282,6 +286,7 @@ function Turn({
   fresh,
   showSource,
   onAnswer,
+  onFeel,
 }: {
   bubble: Bubble;
   showLabel: boolean;
@@ -289,6 +294,7 @@ function Turn({
   fresh: boolean;
   showSource: boolean;
   onAnswer: (answer: AskAnswer) => void;
+  onFeel: (answer: FeelingAnswer) => void;
 }) {
   // 開示。法律で決まっているので、必ず最初に立つ
   if (bubble.system) return <div className="sysline">{bubble.system}</div>;
@@ -299,7 +305,8 @@ function Turn({
       {showLabel ? <div className="daystamp">{bubble.dayLabel}</div> : null}
       {bubble.divider ? <div className="divider">{bubble.divider}</div> : null}
       {bubble.ask ? <Ask ask={bubble.ask} fresh={fresh} casual={bubble.ask.threadId !== undefined} onAnswer={onAnswer} /> : null}
-      {bubble.ask ? null : (
+      {bubble.poll ? <Poll text={bubble.text} answered={bubble.poll.answered} fresh={fresh} onAnswer={onFeel} /> : null}
+      {bubble.ask || bubble.poll ? null : (
       <div className={`bubblerow bubblerow--${bubble.side}${fresh ? ' bubblerow--fresh' : ''}`}>
         {/* 相手側が人間か代理か分からない一通は、白でも薄藍でもない色にする */}
         <div className={`bubble${bubble.byAgent ? ' bubble--agent' : ''}${bubble.unknown ? ' bubble--unknown' : ''}`}>{bubble.text}</div>
@@ -372,6 +379,41 @@ function Ask({
           <button type="button" className="opt" onClick={() => onAnswer('guess')}>
             代理にまかせる
           </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * 「引き継げた感じ、する？」
+ *
+ * 代理とのトークにだけ出る。三つのうちどれを選んでも代理は「そう」と言う。
+ * **作品は判定を持たない。**答えだけが残って、設定の記録から見返せる。
+ */
+function Poll({
+  text,
+  answered,
+  fresh,
+  onAnswer,
+}: {
+  text: string;
+  answered: FeelingAnswer | undefined;
+  fresh: boolean;
+  onAnswer: (answer: FeelingAnswer) => void;
+}) {
+  return (
+    <div className={`askcard askcard--casual${fresh ? ' askcard--fresh' : ''}`}>
+      <p className="askcard__text">{text}</p>
+      {answered ? (
+        <div className="askcard__done">「{FEEL_LABEL[answered]}」と答えました</div>
+      ) : (
+        <div className="askcard__btns">
+          {(['yes', 'notyet', 'unsure'] as const).map((answer) => (
+            <button type="button" className="opt" key={answer} onClick={() => onAnswer(answer)}>
+              {FEEL_LABEL[answer]}
+            </button>
+          ))}
         </div>
       )}
     </div>

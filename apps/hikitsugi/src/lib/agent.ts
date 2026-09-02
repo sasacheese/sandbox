@@ -106,4 +106,18 @@ export const SAYS = {
   started: (name: string) => `${callOf(name)}に声かけてみた。返ってきたよ。`,
   guessed: (name: string, said: string) => `${callOf(name)}の件、返事なかったから「${said}」って言っといた。違ってたら言って。`,
   done: (name: string) => `${callOf(name)}とのやり取り、一区切りついた。引継書まとめといたから、代理タブから見て。`,
+  /** 引き継いで数通やり取りしたあとの問い。 */
+  feel: (name: string) => `${callOf(name)}と、引き継げた感じ、する？`,
+  /** どれを選んでも、これしか言わない。**作品は判定を持たない。** */
+  feelReply: () => 'そう。',
 };
+
+/** 「引き継げた感じ、する？」の選択肢。 */
+export const FEEL_LABEL: Record<'yes' | 'notyet' | 'unsure', string> = {
+  yes: 'した',
+  notyet: 'まだ',
+  unsure: '分からない',
+};
+
+/** 引き継いだあと、何通やり取りしたら訊くか。 */
+export const FEEL_AFTER_SENT = 3;

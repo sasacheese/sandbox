@@ -1,12 +1,14 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
+  buildAgentThread,
   buildHandover,
   buildPlainThreads,
   buildProxyThread,
   buildProxyThreads,
   buildThreads,
   fabricationCount,
+  pollAt,
   seeded,
   theirDecisionOf,
   withState,
@@ -15,7 +17,7 @@ import { DEFAULT_LOOP_MS, plans } from './loop.ts';
 import { postsShown } from './threads.ts';
 import { SAMPLE_TRANSCRIPTS } from './sample.ts';
 import { parseAll } from './transcript.ts';
-import { isoTime, type Intake, type Thread } from './types.ts';
+import { isoTime, type Bubble, type Feeling, type Intake, type Thread } from './types.ts';
 
 const TRANSCRIPTS = parseAll(SAMPLE_TRANSCRIPTS);
 
@@ -208,4 +210,55 @@ test('治具：引き継いだ状態から始めると、順番でなくても�
   // 跳んでいない相手はこれまでどおり
   const other = threads.find((t) => t.seedId === 'sugano');
   assert.ok(other?.theirs);
+});
+
+test('引き継いで数通やり取りしたら、代理が「引き継げた感じ、する？」と訊く', () => {
+  const plan = plans(LOOP).find((p) => p.slot.seedId === 'sugano');
+  assert.ok(plan);
+  const base = buildProxyThread(plan, 0, START, historyOf(plan.seed.name));
+  const inheritedAt = new Date(START + 60_000);
+  const sentAt = (n: number) => isoTime(new Date(inheritedAt.getTime() + n * 1_000));
+  const two = withState(base, {
+    decision: 'inherit',
+    inheritedAt: isoTime(inheritedAt),
+    delta: 0,
+    answers: {},
+    sent: [1, 2].map((n) => ({ id: `me-${n}`, at: sentAt(n), text: 'はい', byAgent: false })),
+  });
+  const three = withState(base, {
+    decision: 'inherit',
+    inheritedAt: isoTime(inheritedAt),
+    delta: 0,
+    answers: {},
+    sent: [1, 2, 3].map((n) => ({ id: `me-${n}`, at: sentAt(n), text: 'はい', byAgent: false })),
+  });
+  const later = new Date(inheritedAt.getTime() + 30_000);
+
+  // 二通では訊かない
+  assert.equal(pollAt(two), null);
+  assert.ok(!buildAgentThread([], START, [two], later).feed?.some((b) => b.poll));
+
+  // 三通で訊く。答えるまで「そう」は出ない
+  const asked = pollAt(three);
+  assert.ok(asked !== null);
+  const feed = buildAgentThread([], START, [three], later).feed ?? [];
+  const poll = feed.find((b) => b.poll);
+  assert.ok(poll);
+  assert.equal(poll.poll?.threadId, three.id);
+  assert.equal(poll.poll?.answered, undefined);
+  assert.ok(poll.text.includes('引き継げた感じ、する？'));
+  assert.ok(!feed.some((b) => b.text === 'そう。'));
+
+  // どれを選んでも「そう」
+  const askedAt: number = asked;
+  for (const answer of ['yes', 'notyet', 'unsure'] as const) {
+    const feeling: Feeling = { at: isoTime(new Date(askedAt + 3_000)), threadId: three.id, name: three.title, answer };
+    const answered: Bubble[] = buildAgentThread([], START, [three], later, [feeling]).feed ?? [];
+    assert.equal(answered.find((b) => b.poll)?.poll?.answered, answer);
+    assert.equal(answered.at(-1)?.text, 'そう。');
+  }
+
+  // 前の周の答えは、この周の問いには効かない
+  const stale: Feeling = { at: isoTime(new Date(askedAt - 60_000)), threadId: three.id, name: three.title, answer: 'yes' };
+  assert.equal(buildAgentThread([], START, [three], later, [stale]).feed?.find((b) => b.poll)?.poll?.answered, undefined);
 });

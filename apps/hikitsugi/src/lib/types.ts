@@ -129,10 +129,35 @@ export type Bubble = {
     /** 代理とのトークに出すとき、答えを届ける先のトーク。 */
     threadId?: string;
   };
+  /**
+   * 「引き継げた感じ、する？」。代理とのトークにだけ出る。
+   *
+   * 引き継いだあと数通やり取りすると届く。答えても代理は「そう」と言うだけ。
+   */
+  poll?: {
+    threadId: string;
+    answered?: FeelingAnswer;
+  };
 };
 
 /** 確認への答え。`guess` は「代理にまかせる」——作り話になる。 */
 export type AskAnswer = 'yes' | 'no' | 'guess';
+
+/**
+ * 「引き継げた感じ、する？」への答え。
+ *
+ * どれを選んでも代理は「そう」としか言わない。**作品は判定を持たない。**
+ * 答えだけが残り、あとで見返せる。
+ */
+export type FeelingAnswer = 'yes' | 'notyet' | 'unsure';
+
+export type Feeling = {
+  at: IsoTime;
+  threadId: string;
+  /** 相手の名前。一周が終わってトークが消えても、誰のことだったか分かるように。 */
+  name: string;
+  answer: FeelingAnswer;
+};
 
 /**
  * トークの種類。

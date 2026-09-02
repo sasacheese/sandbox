@@ -10,7 +10,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import * as db from './lib/db.ts';
 import { interpret, openingOf, replyFor, type Rule } from './lib/agent.ts';
-import { buildHandover, buildPlainThreads, buildThreads, mannerOf, withState, type Holds, type Jumps } from './lib/generate.ts';
+import { buildAgentThread, buildHandover, buildPlainThreads, buildThreads, mannerOf, withState, type Holds, type Jumps } from './lib/generate.ts';
 import { slipsOf } from './lib/slips.ts';
 import { DEFAULT_MODEL, generateSeed, hydrateSeed, type Api, type StoredSeed } from './lib/generate-seed.ts';
 import { COUNTERPARTS, type CounterpartSeed } from './lib/pools.ts';
@@ -23,6 +23,8 @@ import {
   isoTime,
   type AskAnswer,
   type Decision,
+  type Feeling,
+  type FeelingAnswer,
   type Handover,
   type Intake,
   type IsoTime,
@@ -38,6 +40,7 @@ const KV_PROGRESS = 'progress';
 const KV_SEEDS = 'seeds';
 const KV_RULES = 'rules';
 const KV_AGENT = 'agent';
+const KV_FEELINGS = 'feelings';
 
 /**
  * モデルの鍵と名前。ビルド時に GitHub の secret / variable から束ねる。
@@ -90,6 +93,8 @@ export type Store = {
   holds: Holds;
   /** 代理への指示。一周が終わっても残る。 */
   rules: Rule[];
+  /** 「引き継げた感じ、する？」への答え。一周が終わっても残る。 */
+  feelings: Feeling[];
   /** モデルの鍵と名前。ビルド時に束ねたもの。空なら生成は使えない。 */
   api: Api;
   /** 台本を作っている最中／失敗した相手。 */
@@ -128,6 +133,8 @@ export type Store = {
   checkHuman: (threadId: string) => Promise<void>;
   /** 代理人からの確認に答える。答えないと代理人が埋める。 */
   answerAsk: (threadId: string, askId: string, answer: AskAnswer) => Promise<void>;
+  /** 「引き継げた感じ、する？」に答える。どれを選んでも代理は「そう」と言う。 */
+  answerFeeling: (threadId: string, answer: FeelingAnswer) => Promise<void>;
   decide: (threadId: string, decision: Decision) => Promise<void>;
   /**
    * 治具。その相手を、引き継いだ状態から始める。
@@ -166,6 +173,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [stored, setStored] = useState<StoredSeed[]>([]);
   const [rulebook, setRulebook] = useState<{ rules: Rule[]; holds: Holds }>({ rules: [], holds: {} });
   const [agentLog, setAgentLog] = useState<Message[]>([]);
+  const [feelings, setFeelings] = useState<Feeling[]>([]);
+  const feelingsRef = useRef(feelings);
+  useEffect(() => {
+    feelingsRef.current = feelings;
+  }, [feelings]);
   const [generating, setGenerating] = useState<Record<string, 'busy' | 'error'>>({});
   const rulebookRef = useRef(rulebook);
   useEffect(() => {
@@ -210,7 +222,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       setPersistent(ok);
       if (!ok) return;
       db.requestPersistence().catch(() => undefined);
-      const [loadedIntake, loadedSettings, loadedProgress, loadedTranscripts, loadedSeeds, loadedRules, loadedAgent] = await Promise.all([
+      const [loadedIntake, loadedSettings, loadedProgress, loadedTranscripts, loadedSeeds, loadedRules, loadedAgent, loadedFeelings] = await Promise.all([
         db.readKv<Intake>(KV_INTAKE),
         db.readKv<Partial<Settings>>(KV_SETTINGS),
         db.readKv<Progress>(KV_PROGRESS),
@@ -218,11 +230,16 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         db.readKv<StoredSeed[]>(KV_SEEDS),
         db.readKv<{ rules: Rule[]; holds: Holds }>(KV_RULES),
         db.readKv<Message[]>(KV_AGENT),
+        db.readKv<Feeling[]>(KV_FEELINGS),
       ]);
       if (cancelled) return;
       if (loadedTranscripts) setTranscripts(loadedTranscripts);
       if (loadedSeeds) setStored(loadedSeeds);
       if (loadedRules) setRulebook(loadedRules);
+      if (loadedFeelings) {
+        setFeelings(loadedFeelings);
+        feelingsRef.current = loadedFeelings;
+      }
       // 代理応答をオンにしたまま、代理とのトークが空のことがある（前の版から続けた場合）。
       // 最初の一通だけ入れておく。指示を書く場所がここだと分からないと、使えない
       const own = loadedTranscripts ? ownNameOf(loadedTranscripts) : null;
@@ -285,11 +302,18 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const threads = useMemo(() => {
     if (transcripts.length === 0) return [];
     // 代理応答がオフのあいだは、自分のトークだけが並ぶ普通のメッセンジャー
-    const built = intake
-      ? buildThreads(now, transcripts, startedAt, settings.loopMs, seeds, rulebook.holds, agentLog, progress.jumps ?? {})
-      : buildPlainThreads(transcripts, startedAt);
-    return built.map((thread) => withState(thread, progress.states[thread.id]));
-  }, [agentLog, intake, now, progress.jumps, progress.states, rulebook.holds, seeds, settings.loopMs, startedAt, transcripts]);
+    /*
+     * 代理とのトークは、他のトークの**跡を重ねたあとの状態**から組み立てる
+     * （引き継いだか、何通打ったか）。だから二段で作る。
+     */
+    if (!intake) return buildPlainThreads(transcripts, startedAt);
+    const built = buildThreads(now, transcripts, startedAt, settings.loopMs, seeds, rulebook.holds, agentLog, progress.jumps ?? {}, feelings).map(
+      (thread) => withState(thread, progress.states[thread.id]),
+    );
+    const { index } = loopAt(now, startedAt, settings.loopMs);
+    const agent = buildAgentThread(agentLog, startedAt + index * settings.loopMs, built.filter((t) => t.kind === 'proxy'), now, feelings);
+    return built.map((thread) => (thread.kind === 'agent' ? agent : thread));
+  }, [agentLog, feelings, intake, now, progress.jumps, progress.states, rulebook.holds, seeds, settings.loopMs, startedAt, transcripts]);
 
   const threadsRef = useRef(threads);
   useEffect(() => {
@@ -545,6 +569,17 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     [patch],
   );
 
+  const answerFeeling = useCallback(
+    async (threadId: string, answer: FeelingAnswer) => {
+      const thread = threadsRef.current.find((t) => t.id === threadId);
+      const next: Feeling[] = [...feelingsRef.current, { at: isoTime(new Date()), threadId, name: thread?.title ?? threadId, answer }];
+      feelingsRef.current = next;
+      setFeelings(next);
+      await save(KV_FEELINGS, next);
+    },
+    [save],
+  );
+
   const decide = useCallback(
     async (threadId: string, decision: Decision) => {
       await patch(threadId, (state) => ({
@@ -620,6 +655,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       seeds,
       holds: rulebook.holds,
       rules: rulebook.rules,
+      feelings,
       api: API,
       generating,
       mine: [...agent, ...[...mine].sort(byActivity)],
@@ -641,6 +677,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       markRead,
       checkHuman,
       answerAsk,
+      answerFeeling,
       decide,
       startInherited,
       setLoopMs,
@@ -649,8 +686,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   }, [
     agentLog,
     answerAsk,
+    answerFeeling,
     appendTexts,
     checkHuman,
+    feelings,
     disableLab,
     enableLab,
     generateFor,

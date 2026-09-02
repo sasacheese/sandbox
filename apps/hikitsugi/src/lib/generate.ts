@@ -12,7 +12,7 @@
 import { closenessOf as closenessBase } from './closeness.ts';
 import { loopAt, plans, type Plan } from './loop.ts';
 import { AUTO_REPLIES, COUNTERPARTS, NOTES, SCRIPT_SCALE, type CounterpartSeed, type Source } from './pools.ts';
-import { callOf, SAYS } from './agent.ts';
+import { callOf, FEEL_AFTER_SENT, SAYS } from './agent.ts';
 import type { Manner } from './slips.ts';
 import { askGraceMs, bubblesOf, DEFAULT_GAP_MS, isReady } from './threads.ts';
 import { digestOf, habitsOf, toneOf, type Message, type Transcript } from './transcript.ts';
@@ -20,6 +20,7 @@ import {
   isoTime,
   type Belief,
   type Bubble,
+  type Feeling,
   type Handover,
   type Intake,
   type IsoTime,
@@ -180,7 +181,13 @@ export function buildProxyThreads(
  * 確認は、相手のトークにある同じ札と一つのもの。ここで答えれば向こうも埋まる。
  * **一周が終わっても 1. は消えない**——指示は本人の意思なので、進行と一緒に流さない。
  */
-export function buildAgentThread(log: readonly Message[], loopStart: number, proxies: readonly Thread[] = [], now: Date = new Date()): Thread {
+export function buildAgentThread(
+  log: readonly Message[],
+  loopStart: number,
+  proxies: readonly Thread[] = [],
+  now: Date = new Date(),
+  feelings: readonly Feeling[] = [],
+): Thread {
   const feed: Bubble[] = log.map((message, index) => ({
     id: `a-${index}`,
     side: message.mine ? 'right' : 'left',
@@ -228,8 +235,26 @@ export function buildAgentThread(log: readonly Message[], loopStart: number, pro
     }
 
     if (isReady(thread, now) || thread.decision) {
-      const last = bubbles.at(-1);
+      // 一区切りは、台本の最後の一通の少し後。引き継いだあとの分は数えない
+      const last = [...bubbles].reverse().find((b) => !thread.inheritedAt || b.at < thread.inheritedAt);
       if (last) feed.push(say('done', new Date(new Date(last.at).getTime() + thread.gapMs).toISOString(), SAYS.done(thread.title)));
+    }
+
+    /*
+     * 「引き継げた感じ、する？」
+     *
+     * 引き継いで数通やり取りしたら訊く。どれを選んでも「そう」としか言わない。
+     * **作品は判定を持たない。**答えだけが残る。
+     */
+    const asked = pollAt(thread);
+    if (asked !== null) {
+      const feeling = feelings.find((f) => f.threadId === thread.id && new Date(f.at).getTime() >= asked);
+      feed.push(
+        say('feel', new Date(asked).toISOString(), SAYS.feel(thread.title), {
+          poll: { threadId: thread.id, ...(feeling ? { answered: feeling.answer } : {}) },
+        }),
+      );
+      if (feeling) feed.push(say('felt', new Date(new Date(feeling.at).getTime() + FEEL_REPLY_MS).toISOString(), SAYS.feelReply()));
     }
   }
 
@@ -257,6 +282,16 @@ function dayOf(at: number): string {
   return new Date(at).toLocaleDateString('ja-JP', { year: 'numeric', month: 'numeric', day: 'numeric' });
 }
 
+/** 問いを出してから、答えに「そう」と返すまで。 */
+export const FEEL_REPLY_MS = 1_200;
+
+/** 「引き継げた感じ、する？」を出す時刻。まだなら null。 */
+export function pollAt(thread: Thread): number | null {
+  if (thread.decision !== 'inherit' || !thread.inheritedAt) return null;
+  const nth = thread.sent[FEEL_AFTER_SENT - 1];
+  return nth ? new Date(nth.at).getTime() + 2_000 : null;
+}
+
 export function buildThreads(
   now: Date,
   transcripts: readonly Transcript[],
@@ -266,11 +301,12 @@ export function buildThreads(
   holds: Holds = {},
   agentLog: readonly Message[] = [],
   jumps: Jumps = {},
+  feelings: readonly Feeling[] = [],
 ): Thread[] {
   const { index } = loopAt(now, startedAt, loopMs);
   const loopStart = startedAt + index * loopMs;
   const proxies = buildProxyThreads(now, transcripts, startedAt, loopMs, seeds, holds, jumps);
-  return [buildAgentThread(agentLog, loopStart, proxies, now), ...proxies, ...buildPlainThreads(transcripts, loopStart)];
+  return [buildAgentThread(agentLog, loopStart, proxies, now, feelings), ...proxies, ...buildPlainThreads(transcripts, loopStart)];
 }
 
 /** 本人が触った跡を、組み立てたトークへ重ねる。 */

@@ -1,10 +1,12 @@
 import { useRef, useState } from 'react';
+import { FEEL_LABEL } from '../lib/agent.ts';
+import { dateLabel } from '../lib/format.ts';
 import { LOOP_PRESETS } from '../lib/loop.ts';
 import { useStore } from '../store.tsx';
 
 /** 設定。作品の外側の都合だけ置く。作り込まない。 */
 export function Settings() {
-  const { settings, setLoopMs, reset, persistent, intake, threads, loop, transcripts, own, lab, disableLab, appendTexts, seeds, startInherited } =
+  const { settings, setLoopMs, reset, persistent, intake, threads, loop, transcripts, own, lab, disableLab, appendTexts, seeds, startInherited, feelings } =
     useStore();
   const file = useRef<HTMLInputElement>(null);
   const [added, setAdded] = useState<number | null>(null);
@@ -96,6 +98,28 @@ export function Settings() {
               <span className="kv__value">{persistent ? 'この端末に保存しています' : '保存できません'}</span>
             </div>
           </div>
+
+          {/*
+            「引き継げた感じ、する？」への答え。**作品は判定を持たない**ので、
+            ここに残るのは答えだけ。一周が終わっても消えない。
+          */}
+          {feelings.length > 0 ? (
+            <>
+              <span className="field__key" style={{ marginTop: '18px' }}>
+                引き継げた感じ、する？
+              </span>
+              <div className="cover__rows">
+                {[...feelings].reverse().map((feeling) => (
+                  <div className="kv" key={`${feeling.at}-${feeling.threadId}`}>
+                    <span className="kv__key">
+                      {dateLabel(feeling.at)} · {feeling.name}
+                    </span>
+                    <span className="kv__value">{FEEL_LABEL[feeling.answer]}</span>
+                  </div>
+                ))}
+              </div>
+            </>
+          ) : null}
         </section>
 
         {lab ? (
