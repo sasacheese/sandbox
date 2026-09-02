@@ -22,8 +22,9 @@ import { Avatar } from './Avatar.tsx';
  *   引き継いだトーク　：打てる。隣に「代理人に任せる」が付く
  */
 export function Chat({ thread, onBack, onOpenHandover }: { thread: Thread; onBack: () => void; onOpenHandover: () => void }) {
-  const { now, send, draftFor, delegate, markRead, checkHuman, answerAsk, answerFeeling, handoverFor, tellAgent, own } = useStore();
+  const { now, send, draftFor, delegate, markRead, checkHuman, revert, answerAsk, answerFeeling, handoverFor, tellAgent, own } = useStore();
   const [draft, setDraft] = useState('');
+  const [reverting, setReverting] = useState(false);
   const suggestion = draftFor(thread.id);
   /*
    * 出どころの表示。**既定では隠してある。**
@@ -39,7 +40,8 @@ export function Chat({ thread, onBack, onOpenHandover }: { thread: Thread; onBac
   const inherited = thread.decision === 'inherit';
   const ready = isReady(thread, now);
   const base = handover?.closeness ?? 0;
-  const closeness = inherited ? effectiveCloseness(base, thread.delta, daysSinceInherit(thread, now)) : base;
+  // 差し戻したあとも、下がったぶんはそのまま（戻した時点で止まる）
+  const closeness = inherited || thread.decision === 'returned' ? effectiveCloseness(base, thread.delta, daysSinceInherit(thread, now)) : base;
 
   /*
    * 次の一通が来る直前の「…」。
@@ -87,6 +89,8 @@ export function Chat({ thread, onBack, onOpenHandover }: { thread: Thread; onBac
               ? '自分のトーク'
               : inherited
                 ? '引き継ぎ済み'
+                : thread.decision === 'returned'
+                  ? '代理に戻しました'
                 : `代理がやり取り中 · ${ready ? (thread.days ?? 0) : Math.min(storyDay(thread, now), thread.days ?? 0)} / ${thread.days} 日`}
           </div>
         </div>
@@ -133,6 +137,30 @@ export function Chat({ thread, onBack, onOpenHandover }: { thread: Thread; onBac
           <button type="button" className="quadrant__ask" onClick={() => void checkHuman(thread.id)}>
             相手は本人ですか？
           </button>
+          {/* 差し戻し。押すと一度だけ確かめて、それから代理に返す。近さは戻らない */}
+          <button type="button" className="quadrant__ask" onClick={() => setReverting(true)}>
+            やっぱり代理に戻す
+          </button>
+          {reverting ? (
+            <div className="revert">
+              <span className="revert__text">代理タブへ戻り、代理が続きを打ちます。自分で書いたぶんは残ります。近さは戻りません。</span>
+              <div className="revert__btns">
+                <button
+                  type="button"
+                  className="opt opt--on"
+                  onClick={() => {
+                    setReverting(false);
+                    void revert(thread.id);
+                  }}
+                >
+                  戻す
+                </button>
+                <button type="button" className="opt" onClick={() => setReverting(false)}>
+                  やめる
+                </button>
+              </div>
+            </div>
+          ) : null}
         </div>
       ) : null}
 
@@ -170,7 +198,7 @@ export function Chat({ thread, onBack, onOpenHandover }: { thread: Thread; onBac
               key={bubble.id}
               bubble={bubble}
               showLabel={newLabel}
-              showAgentMark={inherited}
+              showAgentMark={inherited || thread.decision === 'returned'}
               fresh={isFresh(bubble.at)}
               showSource={sources}
               onAnswer={(answer) => {
@@ -258,6 +286,8 @@ export function Chat({ thread, onBack, onOpenHandover }: { thread: Thread; onBac
               ? 'このトークは終わりにしました。'
               : thread.decision === 'agent_only'
                 ? '代理だけが続けています。あなたは入っていません。'
+                : thread.decision === 'returned'
+                  ? '代理に戻しました。代理が続きを打っています。近さは戻りません。'
                 : ready
                   ? 'やり取りが終わりました。引継書を読めます。'
                   : '代理がやり取りしています。ここには書き込めません。'}

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { bubblesOf, CHECK_ANSWER, CHECK_QUESTION, CHECK_REPLY_MS, daysSinceInherit, isReady, pendingAsksOf, postsShown, previewOf, storyDay, unreadOf } from './threads.ts';
+import { bubblesOf, CHECK_ANSWER, CHECK_QUESTION, CHECK_REPLY_MS, daysSinceInherit, isLive, isReady, nextPost, pendingAsksOf, postsShown, previewOf, storyDay, unreadOf } from './threads.ts';
 import { buildPlainThreads, buildProxyThread } from './generate.ts';
 import { DEFAULT_LOOP_MS, plans, type Plan } from './loop.ts';
 import { SAMPLE_TRANSCRIPTS } from './sample.ts';
@@ -332,4 +332,53 @@ test('「本人ですか？」と訊くと、少し置いて「はい、本人�
   // 相手が代理でも、答えは同じで、色も分からないまま
   assert.equal(answer.unknown, true);
   assert.equal(answer.byAgent, false);
+});
+
+test('差し戻すと、自分で書いたぶんは残り、仕切りの下で代理が続きを打つ', () => {
+  const at = appears('sugano');
+  const inheritedAt = new Date(at.getTime() + 60_000);
+  const returnedAt = new Date(inheritedAt.getTime() + 20_000);
+  const sent = [{ id: 'me-1', at: isoTime(new Date(inheritedAt.getTime() + 5_000)), text: '千夏ちゃん、久しぶり', byAgent: false }];
+  const thread = proxy('sugano', { decision: 'returned', inheritedAt: isoTime(inheritedAt), returnedAt: isoTime(returnedAt), sent });
+
+  // 戻した直後は、まだ代理の一通は無い
+  const justNow = bubblesOf(thread, new Date(returnedAt.getTime() + 1_000));
+  assert.ok(justNow.some((b) => b.id === 'me-1'), '自分で書いたぶんが消えている');
+  assert.ok(!justNow.some((b) => b.id.startsWith('r-')));
+  assert.ok(isLive(thread, new Date(returnedAt.getTime() + 1_000)), '代理が続けている印が無い');
+
+  // 一通ぶん経つと、代理が戻されたことに触れる一言を打つ。仕切りが付く
+  const one = bubblesOf(thread, new Date(returnedAt.getTime() + thread.gapMs + 100));
+  const first = one.find((b) => b.id.startsWith('r-'));
+  assert.ok(first);
+  assert.equal(first.side, 'right');
+  assert.equal(first.byAgent, true);
+  assert.equal(first.divider, 'ここから代理に戻します');
+  assert.ok(first.text.includes('揺れていた'));
+  assert.ok(one.at(-1)?.id === first.id);
+
+  // 相手側の言葉は、人間か代理か分からない色のまま
+  const three = bubblesOf(thread, new Date(returnedAt.getTime() + 3 * thread.gapMs + 100));
+  const left = three.filter((b) => b.id.startsWith('r-') && b.side === 'left');
+  assert.ok(left.length >= 1);
+  assert.ok(left.every((b) => b.unknown && !b.byAgent));
+
+  // 出し切ると止まる
+  const done = new Date(returnedAt.getTime() + 20 * thread.gapMs);
+  assert.equal(bubblesOf(thread, done).filter((b) => b.id.startsWith('r-')).length, 6);
+  assert.ok(!isLive(thread, done));
+  assert.equal(nextPost(thread, done), null);
+});
+
+test('差し戻しても近さは戻らず、戻した時点で止まる', () => {
+  const at = appears('sugano');
+  const inheritedAt = new Date(at.getTime() + 60_000);
+  const returnedAt = new Date(inheritedAt.getTime() + 5 * DEFAULT_LOOP_MS * 0.0097);
+  const thread = proxy('sugano', { decision: 'returned', inheritedAt: isoTime(inheritedAt), returnedAt: isoTime(returnedAt), delta: -14 });
+  const atReturn = daysSinceInherit(thread, returnedAt);
+  assert.ok(atReturn >= 4);
+  // 戻したあと、いくら経っても増えない（＝下がり続けない）
+  assert.equal(daysSinceInherit(thread, new Date(returnedAt.getTime() + 50 * thread.gapMs)), atReturn);
+  // 下がったぶんはそのまま
+  assert.equal(thread.delta, -14);
 });

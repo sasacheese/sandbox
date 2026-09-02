@@ -872,6 +872,24 @@ export function followUpsUnknown(calls: string, joke: string): readonly FollowUp
   ];
 }
 
+/**
+ * 差し戻したあと、代理が続けるやり取り。
+ *
+ * 最初の一通で、代理は戻されたことに触れる——ただし相手には「本人が書いていた」
+ * とは言わない（代理はあなたのフリをしている）。**書き方が揺れていた、と言うだけ。**
+ * 相手側の言葉は、人間にも代理にも読めるものだけ。
+ */
+export function afterReturn(joke: string): readonly { side: 'yours' | 'theirs'; text: string }[] {
+  return [
+    { side: 'yours', text: '少し、書き方が揺れていたと思います。ここからは、また元のように書きます。' },
+    { side: 'theirs', text: 'そうですか。どちらでも構いません。' },
+    { side: 'yours', text: `${joke}。` },
+    { side: 'theirs', text: 'それは、変わっていませんね。' },
+    { side: 'yours', text: '続きを聞かせてください。急がなくていいです。' },
+    { side: 'theirs', text: 'では、ゆっくり。' },
+  ];
+}
+
 /** 代理人に任せた返信の文面。本人が書くより、いつも少し上手い。 */
 export const AGENT_REPLIES: readonly string[] = [
   'こちらは変わりません。続きを聞かせてください。',

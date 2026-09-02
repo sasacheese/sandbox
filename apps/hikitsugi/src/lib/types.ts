@@ -51,8 +51,13 @@ export type Belief = {
 /** 相手側の人間の判断。引き継ぎを申し出た時点でもう決まっている。 */
 export type TheirDecision = 'inherit' | 'refuse' | 'agent_only';
 
-/** 本人の判断。 */
-export type Decision = 'inherit' | 'extend' | 'end' | 'agent_only';
+/**
+ * 本人の判断。
+ *
+ * `returned` は差し戻し——引き継いだあとで「やっぱり代理に戻す」を選んだ。
+ * トークは代理タブへ戻り、代理が続きを打ち始める。**近さは戻らない。**
+ */
+export type Decision = 'inherit' | 'extend' | 'end' | 'agent_only' | 'returned';
 
 /**
  * 踏み外し。自分で打った文が、引継書に書かれた作法から外れていたところ。
@@ -217,6 +222,8 @@ export type Thread = {
   /** 本人の判断。決めるまで undefined。 */
   decision?: Decision;
   inheritedAt?: IsoTime;
+  /** 代理に戻した時刻。ここから代理が続きを打つ。 */
+  returnedAt?: IsoTime;
   /** 引き継いだあとの親密度の増減。 */
   delta: number;
   /** 自分が打ったもの。 */
@@ -241,6 +248,7 @@ export type ThreadState = {
   answers: Record<string, AskAnswer>;
   decision?: Decision;
   inheritedAt?: IsoTime;
+  returnedAt?: IsoTime;
   delta: number;
   readAt?: IsoTime;
   checks?: IsoTime[];

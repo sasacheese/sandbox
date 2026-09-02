@@ -240,6 +240,11 @@ export function buildAgentThread(
       if (last) feed.push(say('done', new Date(new Date(last.at).getTime() + thread.gapMs).toISOString(), SAYS.done(thread.title)));
     }
 
+    // 差し戻されたら、そのことに触れる
+    if (thread.decision === 'returned' && thread.returnedAt) {
+      feed.push(say('returned', new Date(new Date(thread.returnedAt).getTime() + 800).toISOString(), SAYS.returned(thread.title)));
+    }
+
     /*
      * 「引き継げた感じ、する？」
      *
@@ -287,7 +292,7 @@ export const FEEL_REPLY_MS = 1_200;
 
 /** 「引き継げた感じ、する？」を出す時刻。まだなら null。 */
 export function pollAt(thread: Thread): number | null {
-  if (thread.decision !== 'inherit' || !thread.inheritedAt) return null;
+  if ((thread.decision !== 'inherit' && thread.decision !== 'returned') || !thread.inheritedAt) return null;
   const nth = thread.sent[FEEL_AFTER_SENT - 1];
   return nth ? new Date(nth.at).getTime() + 2_000 : null;
 }
@@ -319,6 +324,7 @@ export function withState(thread: Thread, state: ThreadState | undefined): Threa
     delta: state.delta,
     ...(state.decision ? { decision: state.decision } : {}),
     ...(state.inheritedAt ? { inheritedAt: state.inheritedAt } : {}),
+    ...(state.returnedAt ? { returnedAt: state.returnedAt } : {}),
     ...(state.readAt ? { readAt: state.readAt } : {}),
     ...(state.checks && state.checks.length > 0 ? { checks: state.checks } : {}),
   };

@@ -262,3 +262,17 @@ test('引き継いで数通やり取りしたら、代理が「引き継げた�
   const stale: Feeling = { at: isoTime(new Date(askedAt - 60_000)), threadId: three.id, name: three.title, answer: 'yes' };
   assert.equal(buildAgentThread([], START, [three], later, [stale]).feed?.find((b) => b.poll)?.poll?.answered, undefined);
 });
+
+test('差し戻されたら、代理はそのことに触れる', () => {
+  const plan = plans(LOOP).find((p) => p.slot.seedId === 'sugano');
+  assert.ok(plan);
+  const base = buildProxyThread(plan, 0, START, historyOf(plan.seed.name));
+  const inheritedAt = new Date(START + 60_000);
+  const returnedAt = new Date(START + 90_000);
+  const thread = withState(base, { decision: 'returned', inheritedAt: isoTime(inheritedAt), returnedAt: isoTime(returnedAt), delta: -8, answers: {}, sent: [] });
+  const feed = buildAgentThread([], START, [thread], new Date(START + 120_000)).feed ?? [];
+  const said = feed.find((b) => b.id.startsWith('returned-'));
+  assert.ok(said);
+  assert.ok(said.text.includes('また私が引き受ける'));
+  assert.ok(said.text.includes('近さは戻らない'));
+});

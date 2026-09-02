@@ -11,7 +11,16 @@
  * 日付は表示のうえの目盛りとして残す（「12 日目」）。
  */
 
-import { AGENT_REPLIES, AUTO_REPLIES, followUpsByAgent, followUpsByHuman, followUpsUnknown, SCRIPT_SCALE, type CounterpartSeed } from './pools.ts';
+import {
+  afterReturn,
+  AGENT_REPLIES,
+  AUTO_REPLIES,
+  followUpsByAgent,
+  followUpsByHuman,
+  followUpsUnknown,
+  SCRIPT_SCALE,
+  type CounterpartSeed,
+} from './pools.ts';
 import { scaleDay } from './loop.ts';
 import type { AskAnswer, Bubble, Thread } from './types.ts';
 
@@ -58,10 +67,42 @@ export function postsShown(thread: Thread, now: Date): number {
   return Math.max(0, Math.min(thread.posts, Math.floor(runningMs(thread, now) / thread.gapMs)));
 }
 
-/** 引き継いでから、どれだけ間が空いたか（一通ぶんを一日と見る）。 */
+/**
+ * 引き継いでから、どれだけ間が空いたか（一通ぶんを一日と見る）。
+ *
+ * 代理に戻したあとは、戻した時点で止まる。**近さは戻らないし、それ以上
+ * 下がりもしない**——代理が続けているあいだは、代理が保つ。
+ */
 export function daysSinceInherit(thread: Thread, now: Date): number {
   if (!thread.inheritedAt) return 0;
-  return Math.max(0, Math.floor((now.getTime() - new Date(thread.inheritedAt).getTime()) / thread.gapMs));
+  const until = thread.returnedAt ? Math.min(now.getTime(), new Date(thread.returnedAt).getTime()) : now.getTime();
+  return Math.max(0, Math.floor((until - new Date(thread.inheritedAt).getTime()) / thread.gapMs));
+}
+
+/**
+ * 差し戻したあとに代理が続けるぶん。戻した時刻から一通ずつ等間隔に届く。
+ *
+ * `next` は次の一通（「…」を出すため）。出し切ったら null。
+ */
+export function returnedPosts(thread: Thread, now: Date): { shown: Bubble[]; next: { side: 'left' | 'right'; at: number } | null } {
+  if (thread.decision !== 'returned' || !thread.returnedAt || !thread.seed) return { shown: [], next: null };
+  const returnedAt = new Date(thread.returnedAt).getTime();
+  const lines = afterReturn(thread.seed.joke.phrase);
+  const count = Math.max(0, Math.min(lines.length, Math.floor((now.getTime() - returnedAt) / thread.gapMs)));
+  const shown: Bubble[] = lines.slice(0, count).map((line, index) => ({
+    id: `r-${thread.id}-${index}`,
+    side: line.side === 'yours' ? 'right' : 'left',
+    text: line.text,
+    at: iso(returnedAt + (index + 1) * thread.gapMs),
+    dayLabel: `戻してから ${index + 1} 日`,
+    byAgent: line.side === 'yours',
+    ...(line.side === 'yours' ? { source: 'style' as const } : { unknown: true }),
+  }));
+  const upcoming = lines[count];
+  return {
+    shown,
+    next: upcoming ? { side: upcoming.side === 'yours' ? 'right' : 'left', at: returnedAt + (count + 1) * thread.gapMs } : null,
+  };
 }
 
 /** 台本を出し切ったか。出し切ると引継書を読める。 */
@@ -82,9 +123,11 @@ export function quietDaysOf(thread: Thread, now: Date): number {
   return Math.max(0, Math.floor((now.getTime() - last.at) / 86_400_000));
 }
 
-/** いまやり取りが動いているか（残りがあり、まだ判断していない）。 */
+/** いまやり取りが動いているか（残りがあり、まだ判断していない。差し戻して代理が続けている間も）。 */
 export function isLive(thread: Thread, now: Date): boolean {
-  if (thread.kind !== 'proxy' || thread.decision || isHeld(thread)) return false;
+  if (thread.kind !== 'proxy' || isHeld(thread)) return false;
+  if (thread.decision === 'returned') return returnedPosts(thread, now).next !== null;
+  if (thread.decision) return false;
   return postsShown(thread, now) < thread.posts;
 }
 
@@ -97,6 +140,7 @@ export function isLive(thread: Thread, now: Date): boolean {
 export function nextPost(thread: Thread, now: Date): { side: 'left' | 'right'; at: number } | null {
   const seed = thread.seed;
   if (!seed || !isLive(thread, now)) return null;
+  if (thread.decision === 'returned') return returnedPosts(thread, now).next;
   const shown = postsShown(thread, now);
   const item = itemsOf(seed, thread, thread.days ?? SCRIPT_SCALE).future[shown];
   if (!item) return null;
@@ -330,10 +374,11 @@ function proxyBubbles(thread: Thread, now: Date): Bubble[] {
     return out;
   }
 
-  if (!thread.inheritedAt || thread.decision !== 'inherit') return out;
+  if (!thread.inheritedAt || (thread.decision !== 'inherit' && thread.decision !== 'returned')) return out;
 
   // ここから先は人間の区間。仕切りを一枚挟む
   const inheritedAt = new Date(thread.inheritedAt).getTime();
+  // 差し戻したあとは、相手からの言葉もそこで止まる（続きは代理が引き取る）
   const sinceInherit = daysSinceInherit(thread, now);
   /*
    * 相手側が人間か代理かは、**吹き出しに書かない。**
@@ -406,7 +451,16 @@ function proxyBubbles(thread: Thread, now: Date): Bubble[] {
 
   const after = [...human, ...mine, ...checks].sort((a, b) => (a.at < b.at ? -1 : 1));
   if (after[0]) after[0] = { ...after[0], divider: 'ここから自分で返事をします' };
-  return [...out, ...after];
+
+  /*
+   * 差し戻し。
+   *
+   * 自分で書いていたぶんはそのまま残り、その下に仕切りが一枚入って、代理が
+   * 続きを打ち始める。**近さは戻らない。**
+   */
+  const returned = returnedPosts(thread, now).shown;
+  if (returned[0]) returned[0] = { ...returned[0], divider: 'ここから代理に戻します' };
+  return [...out, ...after, ...returned];
 }
 
 /** 「相手は本人ですか？」と、その答え。答えはいつも同じで、確かめようがない。 */

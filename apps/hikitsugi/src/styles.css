@@ -2674,3 +2674,36 @@ p {
 .quadrant__ask:active {
   background: var(--field);
 }
+
+/* ================================================================= 差し戻し */
+
+.quadrant {
+  flex-wrap: wrap;
+  row-gap: 8px;
+}
+
+.quadrant__ask + .quadrant__ask {
+  margin-left: 0;
+}
+
+.revert {
+  flex: 0 0 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--rule);
+  border-radius: 12px;
+  background: var(--field);
+}
+
+.revert__text {
+  font-size: 12.5px;
+  line-height: 1.65;
+  color: var(--ink-dim);
+}
+
+.revert__btns {
+  display: flex;
+  gap: 8px;
+}

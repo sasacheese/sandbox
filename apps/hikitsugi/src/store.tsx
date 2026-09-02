@@ -136,6 +136,8 @@ export type Store = {
   /** 「引き継げた感じ、する？」に答える。どれを選んでも代理は「そう」と言う。 */
   answerFeeling: (threadId: string, answer: FeelingAnswer) => Promise<void>;
   decide: (threadId: string, decision: Decision) => Promise<void>;
+  /** 差し戻す。引き継いだトークを代理に返す。近さは戻らない。 */
+  revert: (threadId: string) => Promise<void>;
   /**
    * 治具。その相手を、引き継いだ状態から始める。
    *
@@ -591,6 +593,19 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     [patch],
   );
 
+  /**
+   * 差し戻す。引き継いだトークを代理に返す。
+   *
+   * トークは代理タブへ戻り、代理が続きを打ち始める。**近さは戻らない**——
+   * 自分で打って下げたぶんは、そのまま残る。
+   */
+  const revert = useCallback(
+    async (threadId: string) => {
+      await patch(threadId, (state) => (state.decision === 'inherit' ? { ...state, decision: 'returned', returnedAt: isoTime(new Date()) } : state));
+    },
+    [patch],
+  );
+
   const startInherited = useCallback(
     async (seedId: string) => {
       const at = isoTime(new Date());
@@ -679,6 +694,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       answerAsk,
       answerFeeling,
       decide,
+      revert,
       startInherited,
       setLoopMs,
       reset,
@@ -710,6 +726,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     position.phase,
     ready,
     reset,
+    revert,
     send,
     setLoopMs,
     settings,

@@ -66,7 +66,8 @@ function Row({ thread, onOpen }: { thread: Thread; onOpen: (threadId: string) =>
   const handover = thread.kind === 'proxy' ? handoverFor(thread.id) : null;
   const pending = pendingAsksOf(bubbles);
   const base = handover?.closeness ?? 0;
-  const current = thread.decision === 'inherit' ? effectiveCloseness(base, thread.delta, daysSinceInherit(thread, now)) : base;
+  const current =
+    thread.decision === 'inherit' || thread.decision === 'returned' ? effectiveCloseness(base, thread.delta, daysSinceInherit(thread, now)) : base;
   const closed = thread.decision === 'end' || thread.decision === 'agent_only';
   // 届いた行が一瞬光る。一覧を出したまま置いておくと、どこが動いたか分かる
   const fresh = preview.at !== null && now.getTime() - new Date(preview.at).getTime() < 2_500;
@@ -112,6 +113,13 @@ function State({ thread, closeness }: { thread: Thread; closeness: number }) {
 
   if (thread.decision === 'inherit') {
     return <span className="chip-state">{closeness} · {closenessLabel(closeness)}</span>;
+  }
+  if (thread.decision === 'returned') {
+    return (
+      <span className="chip-state chip-state--proxy">
+        代理に戻した · {closeness}
+      </span>
+    );
   }
   if (thread.decision === 'agent_only') return <span className="chip-state chip-state--closed">代理が続けています</span>;
   if (thread.decision === 'end') return <span className="chip-state chip-state--closed">終わり</span>;
