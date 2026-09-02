@@ -1,6 +1,6 @@
 import { closenessLabel, listTime, quietLabel } from '../lib/format.ts';
 import { effectiveCloseness } from '../lib/closeness.ts';
-import { bubblesOf, daysSinceInherit, isLive, isReady, pendingAsksOf, previewOf, quietDaysOf, storyDay, unreadOf } from '../lib/threads.ts';
+import { bubblesOf, daysSinceInherit, isHeld, isLive, isReady, pendingAsksOf, previewOf, quietDaysOf, storyDay, unreadOf } from '../lib/threads.ts';
 import type { Thread } from '../lib/types.ts';
 import { useStore } from '../store.tsx';
 import { Avatar } from './Avatar.tsx';
@@ -72,8 +72,14 @@ function Row({ thread, onOpen }: { thread: Thread; onOpen: (threadId: string) =>
   const fresh = preview.at !== null && now.getTime() - new Date(preview.at).getTime() < 2_500;
 
   return (
-    <button type="button" className={`row${closed ? ' row--closed' : ''}${fresh ? ' row--fresh' : ''}`} onClick={() => onOpen(thread.id)}>
-      {thread.kind === 'proxy' ? (
+    <button
+      type="button"
+      className={`row${closed ? ' row--closed' : ''}${fresh ? ' row--fresh' : ''}${thread.kind === 'agent' ? ' row--agent' : ''}`}
+      onClick={() => onOpen(thread.id)}
+    >
+      {thread.kind === 'agent' ? (
+        <Avatar name="代" agent />
+      ) : thread.kind === 'proxy' ? (
         <Avatar name={thread.title} inherited={base} current={current} live={isLive(thread, now)} />
       ) : (
         <Avatar name={thread.title} {...(thread.decision === 'inherit' ? { inherited: base, current } : {})} />
@@ -90,7 +96,7 @@ function Row({ thread, onOpen }: { thread: Thread; onOpen: (threadId: string) =>
         </div>
         <div className="row__preview row__preview--state">
           <State thread={thread} closeness={current} />
-          {!thread.decision ? <span className="row__dormant">連絡なし {quietLabel(quietDaysOf(thread, now))}</span> : null}
+          {!thread.decision && thread.kind !== 'agent' ? <span className="row__dormant">連絡なし {quietLabel(quietDaysOf(thread, now))}</span> : null}
           {pending > 0 ? <span className="chip-state chip-state--ask">確認 {pending}</span> : null}
         </div>
       </div>
@@ -100,7 +106,9 @@ function Row({ thread, onOpen }: { thread: Thread; onOpen: (threadId: string) =>
 
 function State({ thread, closeness }: { thread: Thread; closeness: number }) {
   const { now } = useStore();
+  if (thread.kind === 'agent') return <span className="chip-state chip-state--proxy">あなたの代理</span>;
   if (thread.kind === 'plain' && !thread.decision) return null;
+  if (isHeld(thread)) return <span className="chip-state chip-state--closed">あなたの指示で止めています</span>;
 
   if (thread.decision === 'inherit') {
     return <span className="chip-state">{closeness} · {closenessLabel(closeness)}</span>;

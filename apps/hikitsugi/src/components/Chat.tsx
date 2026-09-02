@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { SOURCE_LABEL } from '../lib/pools.ts';
 import { effectiveCloseness } from '../lib/closeness.ts';
 import { clockTime, closenessLabel } from '../lib/format.ts';
-import { bubblesOf, daysSinceInherit, isReady, nextPost, storyDay } from '../lib/threads.ts';
+import { bubblesOf, daysSinceInherit, isHeld, isReady, nextPost, storyDay } from '../lib/threads.ts';
 import type { AskAnswer, Bubble, Thread } from '../lib/types.ts';
 import { useStore } from '../store.tsx';
 import { Avatar } from './Avatar.tsx';
@@ -20,7 +20,7 @@ import { Avatar } from './Avatar.tsx';
  *   引き継いだトーク　：打てる。隣に「代理人に任せる」が付く
  */
 export function Chat({ thread, onBack, onOpenHandover }: { thread: Thread; onBack: () => void; onOpenHandover: () => void }) {
-  const { now, send, delegate, markRead, answerAsk, handoverFor } = useStore();
+  const { now, send, delegate, markRead, answerAsk, handoverFor, tellAgent } = useStore();
   const [draft, setDraft] = useState('');
   /*
    * 出どころの表示。**既定では隠してある。**
@@ -72,11 +72,15 @@ export function Chat({ thread, onBack, onOpenHandover }: { thread: Thread; onBac
         <button type="button" className="chathead__back" onClick={onBack} aria-label="戻る">
           ‹
         </button>
-        <Avatar name={thread.title} size={34} {...(handover ? { inherited: base, current: closeness } : {})} />
+        <Avatar name={thread.kind === 'agent' ? '代' : thread.title} size={34} agent={thread.kind === 'agent'} {...(handover ? { inherited: base, current: closeness } : {})} />
         <div className="chathead__body">
-          <div className="chathead__title">{thread.title}</div>
+          <div className="chathead__title">{thread.kind === 'agent' ? 'あなたの代理' : thread.title}</div>
           <div className="chathead__sub">
-            {thread.kind === 'plain' && !inherited
+            {thread.kind === 'agent'
+              ? '指示はここに。止める・再開する・申し送る'
+              : isHeld(thread)
+                ? 'あなたの指示で止めています'
+              : thread.kind === 'plain' && !inherited
               ? '自分のトーク'
               : inherited
                 ? thread.theirs === 'agent_only'
@@ -176,14 +180,14 @@ export function Chat({ thread, onBack, onOpenHandover }: { thread: Thread; onBac
         <div ref={bottom} />
       </div>
 
-      {inherited || thread.kind === 'plain' ? (
+      {inherited || thread.kind === 'plain' || thread.kind === 'agent' ? (
         <div className="composer">
           <textarea
             className="composer__input"
             value={draft}
             rows={1}
             onChange={(e) => setDraft(e.target.value.slice(0, 300))}
-            placeholder="メッセージを入力"
+            placeholder={thread.kind === 'agent' ? '例：菅野さんには返さないで' : 'メッセージを入力'}
           />
           {inherited ? (
             <button
@@ -202,7 +206,8 @@ export function Chat({ thread, onBack, onOpenHandover }: { thread: Thread; onBac
             disabled={draft.trim() === ''}
             aria-label="送信"
             onClick={() => {
-              void send(thread.id, draft);
+              if (thread.kind === 'agent') void tellAgent(draft);
+              else void send(thread.id, draft);
               setDraft('');
             }}
           >

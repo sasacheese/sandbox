@@ -1814,37 +1814,53 @@ p {
 /* ============================================================== 友達 */
 
 /*
- * この画面が、この作品でいちばん短く言える形になる。
+ * LINE の「ホーム」に寄せる。白い面、薄い罫、小さな見出しに件数、丸い顔。
+ * カードは使わない。上に自分の行、その下に集計、それから折りたためる群。
+ */
+.friends {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  background: var(--paper);
+  padding-bottom: 96px;
+}
+
+/* いちばん上の、自分の行 */
+.me {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 16px var(--pad) 14px;
+}
+
+.me__name {
+  font-size: 17px;
+  font-weight: 700;
+}
+
+.me__status {
+  margin-top: 2px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+/*
+ * 集計。この画面でいちばん短く言える形。
  *
- *   自分の友達 3　／　代理の友達 9
+ *   自分で話している 0　／　代理が話している 9
  *
  * 左の数字は動かない。右の数字だけが、眺めているあいだに増える。
  */
 .tally {
-  position: relative;
-  margin: 13px var(--pad) 12px;
-  padding: 18px 18px 16px;
-  border-radius: var(--r-card);
-  background: var(--paper);
-  overflow: hidden;
-  box-shadow: 0 2px 14px rgba(23, 26, 33, 0.06);
-}
-
-/* 面に薄い格子を敷く。計器らしさが一枚入る */
-.tally::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background-image: radial-gradient(circle, var(--rule) 1px, transparent 1px);
-  background-size: 13px 13px;
-  opacity: 0.7;
-  pointer-events: none;
+  padding: 12px var(--pad) 14px;
+  border-top: 1px solid var(--rule);
+  border-bottom: 1px solid var(--rule);
+  background: var(--sheet);
 }
 
 .tally__bar {
-  position: relative;
   display: flex;
-  height: 10px;
+  height: 8px;
   border-radius: 999px;
   overflow: hidden;
   background: var(--field);
@@ -1857,7 +1873,6 @@ p {
 
 .tally__proxy {
   background: linear-gradient(90deg, var(--proxy), var(--proxy-2));
-  box-shadow: 0 0 12px var(--proxy-glow);
   transition: flex-grow 800ms ease-out;
 }
 
@@ -1865,25 +1880,10 @@ p {
   flex: 1;
 }
 
-.tally__note {
-  position: relative;
-  margin-top: 14px;
-  font-size: 11.5px;
-  line-height: 1.7;
-  color: var(--muted);
-}
-
-/*
- * 二つの数字は上下に積む。
- *
- * 横に並べると、左右で言葉の長さが違うぶん数字の位置がずれて、比べるための
- * 二つが比べにくくなる（実際にずれて見えた）。**右端で揃える**ほうが読める。
- */
 .tally__rows {
-  position: relative;
   display: flex;
   flex-direction: column;
-  margin-top: 16px;
+  margin-top: 8px;
 }
 
 .tally__row {
@@ -1891,7 +1891,7 @@ p {
   align-items: baseline;
   justify-content: space-between;
   gap: 14px;
-  padding: 9px 0;
+  padding: 7px 0;
 }
 
 .tally__row + .tally__row {
@@ -1901,14 +1901,14 @@ p {
 .tally__key {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  font-size: 12px;
+  gap: 7px;
+  font-size: 13px;
   color: var(--ink-dim);
 }
 
 .tally__dot {
-  width: 9px;
-  height: 9px;
+  width: 8px;
+  height: 8px;
   border-radius: 50%;
 }
 
@@ -1918,7 +1918,6 @@ p {
 
 .tally__dot--proxy {
   background: var(--proxy);
-  box-shadow: 0 0 0 3px var(--proxy-soft);
 }
 
 .tally__num {
@@ -1926,7 +1925,7 @@ p {
   min-width: 42px;
   text-align: right;
   font-family: var(--mono);
-  font-size: 22px;
+  font-size: 21px;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
   transition: color 300ms ease-out;
@@ -1935,66 +1934,55 @@ p {
 /* 増えている最中だけ色が乗る。差し替わるだけだと気づかない */
 .tally__num--moving {
   color: var(--proxy);
-  text-shadow: 0 0 10px var(--proxy-glow);
 }
 
-/*
- * 友達タブの入れ物。
- *
- * トーク一覧（.rows）は白い面を全幅に敷くが、こちらは**丸いカードが地の上に
- * 浮かぶ**形。同じ入れ物を使い回していたせいで、丸いカードの後ろに角の尖った
- * 白い面が全幅で見えていた。
- */
-.fgroups {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  padding-bottom: 96px;
+.tally__note {
+  margin-top: 8px;
+  font-size: 11.5px;
+  line-height: 1.7;
+  color: var(--muted);
 }
 
-.fgroup {
-  display: flex;
-  flex-direction: column;
-  /* 上の集計カード（.tally）と左右の位置を揃える */
-  margin: 0 var(--pad) 12px;
-  background: var(--paper);
-  border-radius: var(--r-card);
-  overflow: hidden;
-  box-shadow: 0 1px 8px rgba(23, 26, 33, 0.05);
-}
-
+/* 群の見出し。押すと折りたたむ */
 .fgroup__head {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 13px 15px 3px;
+  width: 100%;
+  padding: 12px var(--pad) 8px;
+  background: transparent;
+  border: none;
+  text-align: left;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.fgroup__head:active {
+  background: var(--sheet);
 }
 
 .fgroup__title {
-  font-family: var(--mono);
-  font-size: 10px;
-  letter-spacing: 0.14em;
-  color: var(--proxy);
+  font-weight: 600;
 }
 
 .fgroup__count {
-  margin-left: auto;
-  min-width: 18px;
-  height: 18px;
-  border-radius: 999px;
-  background: var(--field);
-  color: var(--ink-dim);
   font-family: var(--mono);
-  font-size: 10px;
-  line-height: 18px;
-  text-align: center;
-  padding: 0 5px;
+  font-size: 11px;
+  color: var(--faint);
 }
 
-.fgroup__note {
-  padding: 0 15px 6px;
-  font-size: 11.5px;
-  color: var(--faint);
+.fgroup__chev {
+  margin-left: auto;
+  width: 8px;
+  height: 8px;
+  border-right: 1.5px solid var(--faint);
+  border-bottom: 1.5px solid var(--faint);
+  transform: rotate(45deg);
+  transition: transform 180ms ease-out;
+}
+
+.fgroup--closed .fgroup__chev {
+  transform: rotate(-45deg);
 }
 
 .friend {
@@ -2003,20 +1991,10 @@ p {
   align-items: center;
   gap: 13px;
   width: 100%;
-  padding: 11px 15px 12px;
+  padding: 9px var(--pad) 10px;
   background: transparent;
   border: none;
   text-align: left;
-}
-
-.friend + .friend::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 70px;
-  right: 0;
-  height: 1px;
-  background: var(--rule);
 }
 
 .friend:active {
@@ -2036,16 +2014,17 @@ p {
 
 .friend__name {
   font-size: 15px;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .friend__top .chip-state {
   margin-left: auto;
 }
 
+/* LINE のステータスメッセージの場所。ここに連絡の無い期間が入る */
 .friend__sub {
-  margin-top: 2px;
-  font-size: 11.5px;
+  margin-top: 1px;
+  font-size: 12px;
   color: var(--muted);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -2057,12 +2036,12 @@ p {
   display: flex;
   align-items: center;
   gap: 9px;
-  margin-top: 8px;
+  margin-top: 6px;
 }
 
 .friend__bar {
   flex: 1;
-  height: 4px;
+  height: 3px;
   border-radius: 999px;
   background: var(--field);
   overflow: hidden;
@@ -2073,15 +2052,7 @@ p {
   height: 100%;
   border-radius: 999px;
   background: linear-gradient(90deg, var(--proxy), var(--proxy-2));
-  box-shadow: 0 0 8px var(--proxy-glow);
   transition: width 900ms linear;
-}
-
-.friend__blocked {
-  margin-top: 6px;
-  font-size: 11px;
-  line-height: 1.7;
-  color: var(--faint);
 }
 
 .friend__days {
@@ -2092,6 +2063,30 @@ p {
   font-size: 9.5px;
   color: var(--muted);
   font-variant-numeric: tabular-nums;
+}
+
+.friend__blocked {
+  margin-top: 4px;
+  font-size: 11px;
+  line-height: 1.7;
+  color: var(--faint);
+}
+
+/* 取り込んだ相手に、代理のやり取りを作るボタン */
+.friend__make {
+  margin-top: 6px;
+  align-self: flex-start;
+  border: 1px solid var(--proxy);
+  background: transparent;
+  color: var(--proxy);
+  border-radius: 999px;
+  font-size: 11.5px;
+  font-weight: 600;
+  padding: 4px 11px;
+}
+
+.friend__make:disabled {
+  opacity: 0.5;
 }
 
 /* 画面の外に置く定義だけの図。場所を取らせない */
@@ -2459,4 +2454,48 @@ p {
   font-size: 12.5px;
   line-height: 1.75;
   color: var(--ink-dim);
+}
+
+/* ======================================================= 代理とのトーク */
+
+/* 一覧では、いちばん上に固定される一行 */
+.row--agent .row__title {
+  color: var(--proxy);
+}
+
+.row--agent {
+  background: var(--proxy-soft);
+}
+
+/* 代理の顔。名前ではなく印 */
+.avatar__face--agent {
+  background: linear-gradient(135deg, var(--proxy-2), var(--proxy)) !important;
+}
+
+.chathead__pill {
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  color: var(--proxy);
+  background: var(--proxy-soft);
+  border-radius: 999px;
+  padding: 2px 7px;
+}
+
+/* ============================================================ 設定の入力 */
+
+.input--key {
+  font-family: var(--mono);
+  font-size: 12.5px;
+  letter-spacing: 0.02em;
+}
+
+.field__row {
+  display: flex;
+  gap: 8px;
+}
+
+.field__row .input {
+  flex: 1;
+  min-width: 0;
 }

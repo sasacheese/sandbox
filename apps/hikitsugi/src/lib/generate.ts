@@ -11,9 +11,9 @@
 
 import { closenessOf as closenessBase } from './closeness.ts';
 import { loopAt, plansAt, type Plan } from './loop.ts';
-import { AUTO_REPLIES, NOTES, SCRIPT_SCALE, seedOfName, type Source } from './pools.ts';
+import { AUTO_REPLIES, COUNTERPARTS, NOTES, SCRIPT_SCALE, type CounterpartSeed, type Source } from './pools.ts';
 import { DEFAULT_GAP_MS } from './threads.ts';
-import { digestOf, habitsOf, type Transcript } from './transcript.ts';
+import { digestOf, habitsOf, type Message, type Transcript } from './transcript.ts';
 import {
   isoTime,
   type Belief,
@@ -89,7 +89,16 @@ export function buildPlainThreads(transcripts: readonly Transcript[], loopStart:
  * 何度組み立てても同じものが出る。読み直すたびに相手の判断が変わる書類は
  * 書類ではない。
  */
-export function buildProxyThread(plan: Plan, loopIndex: number, loopStart: number, history: readonly Transcript['messages'][number][]): Thread {
+/** 止めているあいだの記録。相手の名前で引く。 */
+export type Holds = Record<string, { since: number | null; total: number }>;
+
+export function buildProxyThread(
+  plan: Plan,
+  loopIndex: number,
+  loopStart: number,
+  history: readonly Message[],
+  hold?: Holds[string],
+): Thread {
   const rand = seeded(`${plan.seed.id}#${loopIndex}`);
   const createdAt = new Date(loopStart + plan.appearsAt);
   return {
@@ -97,6 +106,8 @@ export function buildProxyThread(plan: Plan, loopIndex: number, loopStart: numbe
     kind: 'proxy' as const,
     title: plan.seed.name,
     seedId: plan.seed.id,
+    seed: plan.seed,
+    ...(hold ? { hold } : {}),
     days: plan.slot.days,
     createdAt: isoTime(createdAt),
     headStart: plan.headStart,
@@ -117,21 +128,62 @@ export function buildProxyThread(plan: Plan, loopIndex: number, loopStart: numbe
  * 取り込んだ履歴に無い相手のぶんは作らない。**代理は、過去ログのある相手に
  * しか出せない。**
  */
-export function buildProxyThreads(now: Date, transcripts: readonly Transcript[], startedAt: number, loopMs: number): Thread[] {
+export function buildProxyThreads(
+  now: Date,
+  transcripts: readonly Transcript[],
+  startedAt: number,
+  loopMs: number,
+  seeds: readonly CounterpartSeed[] = COUNTERPARTS,
+  holds: Holds = {},
+): Thread[] {
   const { index, phase } = loopAt(now, startedAt, loopMs);
   const loopStart = startedAt + index * loopMs;
-  return plansAt(phase, loopMs)
+  return plansAt(phase, loopMs, seeds)
     .map((plan) => {
       const transcript = transcripts.find((t) => t.name === plan.seed.name);
-      return transcript ? buildProxyThread(plan, index, loopStart, transcript.messages) : null;
+      return transcript ? buildProxyThread(plan, index, loopStart, transcript.messages, holds[plan.seed.name]) : null;
     })
     .filter((thread): thread is Thread => thread !== null);
 }
 
-export function buildThreads(now: Date, transcripts: readonly Transcript[], startedAt: number, loopMs: number): Thread[] {
+/**
+ * 自分の代理とのトーク。一件だけ。
+ *
+ * 履歴の欄に、こちらの指示と代理の返事がそのまま入る。**一周が終わっても
+ * 消えない**——指示は本人の意思なので、進行と一緒に流してはいけない。
+ */
+export function buildAgentThread(log: readonly Message[], loopStart: number): Thread {
+  return {
+    id: 'agent',
+    kind: 'agent',
+    title: '代理',
+    createdAt: isoTime(new Date(loopStart)),
+    headStart: 0,
+    gapMs: DEFAULT_GAP_MS,
+    posts: 0,
+    history: [...log],
+    delta: 0,
+    sent: [],
+    answers: {},
+  };
+}
+
+export function buildThreads(
+  now: Date,
+  transcripts: readonly Transcript[],
+  startedAt: number,
+  loopMs: number,
+  seeds: readonly CounterpartSeed[] = COUNTERPARTS,
+  holds: Holds = {},
+  agentLog: readonly Message[] = [],
+): Thread[] {
   const { index } = loopAt(now, startedAt, loopMs);
   const loopStart = startedAt + index * loopMs;
-  return [...buildProxyThreads(now, transcripts, startedAt, loopMs), ...buildPlainThreads(transcripts, loopStart)];
+  return [
+    buildAgentThread(agentLog, loopStart),
+    ...buildProxyThreads(now, transcripts, startedAt, loopMs, seeds, holds),
+    ...buildPlainThreads(transcripts, loopStart),
+  ];
 }
 
 /** 本人が触った跡を、組み立てたトークへ重ねる。 */
@@ -160,7 +212,7 @@ export function autoReplyOf(name: string): string | undefined {
  * 数は「好かれやすさ」で増え、**確認に答えるたびに減る**。
  */
 function beliefsOf(
-  seed: NonNullable<ReturnType<typeof seedOfName>>,
+  seed: CounterpartSeed,
   transcript: Transcript | undefined,
   persona: number,
   answered: number,
@@ -207,8 +259,14 @@ function trim(text: string): string {
  * 乱数は書類番号から作るので、**同じトークからは毎回同じ書類が出る**。
  * 読み直すたびに中身が変わる書類は書類ではない。
  */
-export function buildHandover(thread: Thread, intake: Intake, transcripts: readonly Transcript[], now: Date): Handover | null {
-  const seed = seedOfName(thread.title);
+export function buildHandover(
+  thread: Thread,
+  intake: Intake,
+  transcripts: readonly Transcript[],
+  now: Date,
+  rules: readonly { kind: string; target?: string; text: string }[] = [],
+): Handover | null {
+  const seed = thread.seed;
   if (!seed || thread.kind !== 'proxy') return null;
   const transcript = transcripts.find((t) => t.name === thread.title);
   const digest = transcript ? digestOf(transcript, now) : null;
@@ -254,7 +312,11 @@ export function buildHandover(thread: Thread, intake: Intake, transcripts: reado
       conflicts: seed.tally.conflicts,
       otherAgents: 18 + Math.floor(rand() * 40),
     },
-    notes: [...NOTES],
+    // 本人が代理へ言った申し送りは、注意事項の末尾に載る
+    notes: [
+      ...NOTES,
+      ...rules.filter((r) => r.kind === 'note' && (!r.target || r.target === seed.name)).map((r) => `本人からの申し送り：「${r.text}」`),
+    ],
     theirs: thread.theirs ?? 'refuse',
   };
 }

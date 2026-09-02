@@ -94,9 +94,16 @@ export type Plan = {
   endsAt: number;
 };
 
+/** その台本の時間割。手書きなら表から、生成したものなら台本自身から。 */
+export function slotOf(seed: CounterpartSeed): Slot | null {
+  const fixed = SLOTS.find((slot) => slot.seedId === seed.id);
+  if (fixed) return fixed;
+  if (seed.slot) return { seedId: seed.id, at: seed.slot.at, head: 0, days: seed.slot.days, gap: seed.slot.gap };
+  return null;
+}
+
 /** 一本ぶんの時間割を解く。 */
-export function planOf(slot: Slot, loopMs: number): Plan | null {
-  const seed = seedOf(slot.seedId);
+export function planOf(slot: Slot, loopMs: number, seed: CounterpartSeed | undefined = seedOf(slot.seedId)): Plan | null {
   if (!seed) return null;
   const headStart = Math.round(slot.days * slot.head);
   const posts = postCount(seed, slot.days, headStart);
@@ -107,8 +114,13 @@ export function planOf(slot: Slot, loopMs: number): Plan | null {
   return { slot, seed, headStart, posts, gapMs, appearsAt, endsAt: appearsAt + posts * gapMs };
 }
 
-export function plans(loopMs: number): Plan[] {
-  return SLOTS.map((slot) => planOf(slot, loopMs)).filter((plan): plan is Plan => plan !== null);
+export function plans(loopMs: number, seeds: readonly CounterpartSeed[] = COUNTERPARTS): Plan[] {
+  return seeds
+    .map((seed) => {
+      const slot = slotOf(seed);
+      return slot ? planOf(slot, loopMs, seed) : null;
+    })
+    .filter((plan): plan is Plan => plan !== null);
 }
 
 /** いま一巡の何周目・どこにいるか。 */
@@ -118,6 +130,6 @@ export function loopAt(now: Date, startedAt: number, loopMs: number): { index: n
 }
 
 /** その時点で一覧に出ているトーク。**放っておくと増える。** */
-export function plansAt(phase: number, loopMs: number): Plan[] {
-  return plans(loopMs).filter((plan) => plan.appearsAt <= phase);
+export function plansAt(phase: number, loopMs: number, seeds: readonly CounterpartSeed[] = COUNTERPARTS): Plan[] {
+  return plans(loopMs, seeds).filter((plan) => plan.appearsAt <= phase);
 }

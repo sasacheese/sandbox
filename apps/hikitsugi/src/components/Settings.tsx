@@ -1,9 +1,16 @@
+import { useRef, useState } from 'react';
 import { LOOP_PRESETS } from '../lib/loop.ts';
 import { useStore } from '../store.tsx';
 
 /** 設定。作品の外側の都合だけ置く。作り込まない。 */
 export function Settings() {
-  const { settings, setLoopMs, reset, persistent, intake, threads, loop, transcripts, own, lab, disableLab } = useStore();
+  const { settings, setLoopMs, reset, persistent, intake, threads, loop, transcripts, own, lab, disableLab, appendTexts, api, setApi, seeds } =
+    useStore();
+  const file = useRef<HTMLInputElement>(null);
+  const [added, setAdded] = useState<number | null>(null);
+  const [key, setKey] = useState(api.key);
+  const [model, setModel] = useState(api.model);
+  const generated = seeds.filter((seed) => seed.generated).length;
   const inherited = threads.filter((t) => t.decision === 'inherit').length;
   const agentSent = threads.reduce((n, t) => n + t.sent.filter((s) => s.byAgent).length, 0);
   const selfSent = threads.reduce((n, t) => n + t.sent.filter((s) => !s.byAgent).length, 0);
@@ -41,6 +48,65 @@ export function Settings() {
         <section className="section">
           <div className="section__head">
             <span className="section__no">02</span>
+            <span className="section__title">トーク履歴を足す</span>
+          </div>
+          <p className="sub">
+            LINE の「トーク履歴を送信」で書き出した .txt を追加できます。同じ相手のものは差し替えます。端末の外へは出ません。
+            {added !== null ? `　${added} 件を読み込みました。` : ''}
+          </p>
+          <input
+            ref={file}
+            type="file"
+            accept=".txt,text/plain"
+            multiple
+            hidden
+            onChange={async (e) => {
+              const files = [...(e.target.files ?? [])];
+              if (files.length === 0) return;
+              setAdded(await appendTexts(await Promise.all(files.map((f) => f.text()))));
+              e.target.value = '';
+            }}
+          />
+          <button className="btn btn--ghost" type="button" onClick={() => file.current?.click()}>
+            ファイルを選んで足す
+          </button>
+        </section>
+
+        <section className="section">
+          <div className="section__head">
+            <span className="section__no">03</span>
+            <span className="section__title">代理のやり取りを作る</span>
+          </div>
+          <p className="sub">
+            取り込んだ相手には台本がありません。モデルの鍵を入れると、友達の一覧から、その人の過去ログを読んで代理のやり取りを作れます。
+            鍵はこの端末にだけ置き、送る先はモデルの API だけです。
+            {generated > 0 ? `　いま ${generated} 人ぶんを作ってあります。` : ''}
+          </p>
+          <div className="field">
+            <span className="field__key">OpenAI API キー</span>
+            <input
+              className="input input--key"
+              type="password"
+              value={key}
+              onChange={(e) => setKey(e.target.value)}
+              placeholder="sk-…"
+              autoComplete="off"
+            />
+          </div>
+          <div className="field">
+            <span className="field__key">モデル</span>
+            <div className="field__row">
+              <input className="input input--key" value={model} onChange={(e) => setModel(e.target.value)} autoComplete="off" />
+              <button className="btn btn--ghost" type="button" style={{ flex: 'none', width: 'auto', padding: '0 16px' }} onClick={() => void setApi({ key, model })}>
+                保存
+              </button>
+            </div>
+          </div>
+        </section>
+
+        <section className="section">
+          <div className="section__head">
+            <span className="section__no">04</span>
             <span className="section__title">記録</span>
           </div>
           <div className="cover__rows">
@@ -86,7 +152,7 @@ export function Settings() {
         {lab ? (
           <section className="section">
             <div className="section__head">
-              <span className="section__no">03</span>
+              <span className="section__no">05</span>
               <span className="section__title">代理応答をやめる</span>
             </div>
             <p className="sub">
@@ -100,7 +166,7 @@ export function Settings() {
 
         <section className="section">
           <div className="section__head">
-            <span className="section__no">{lab ? '04' : '03'}</span>
+            <span className="section__no">{lab ? '06' : '05'}</span>
             <span className="section__title">記録を消す</span>
           </div>
           <p className="sub">取り込んだ履歴も、代理のやり取りも消えます。消しても、相手の記憶は残ります。</p>

@@ -9,8 +9,11 @@
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import * as db from './lib/db.ts';
-import { buildHandover, buildPlainThreads, buildThreads, withState } from './lib/generate.ts';
-import { ownNameOf, parseAll, type Transcript } from './lib/transcript.ts';
+import { interpret, openingOf, replyFor, type Rule } from './lib/agent.ts';
+import { buildHandover, buildPlainThreads, buildThreads, withState, type Holds } from './lib/generate.ts';
+import { DEFAULT_MODEL, generateSeed, hydrateSeed, type Api, type StoredSeed } from './lib/generate-seed.ts';
+import { COUNTERPARTS, type CounterpartSeed } from './lib/pools.ts';
+import { ownNameOf, parseAll, type Message, type Transcript } from './lib/transcript.ts';
 import { DEFAULT_LOOP_MS, loopAt } from './lib/loop.ts';
 import { agentReplyText, bubblesOf, isReady } from './lib/threads.ts';
 import {
@@ -28,6 +31,10 @@ const KV_INTAKE = 'intake';
 const KV_TRANSCRIPTS = 'transcripts';
 const KV_SETTINGS = 'settings';
 const KV_PROGRESS = 'progress';
+const KV_SEEDS = 'seeds';
+const KV_RULES = 'rules';
+const KV_AGENT = 'agent';
+const KV_API = 'api';
 
 export type Settings = {
   /** 一巡の長さ。 */
@@ -59,7 +66,18 @@ export type Store = {
   /** いま何巡目のどこにいるか。 */
   loop: { index: number; phase: number; total: number };
 
-  /** 自分のトーク（止まっているもの＋引き継いだもの）。 */
+  /** 台本の一覧。手書きの九人＋取り込んだ履歴から作ったもの。 */
+  seeds: CounterpartSeed[];
+  /** 止めている相手。 */
+  holds: Holds;
+  /** 代理への指示。一周が終わっても残る。 */
+  rules: Rule[];
+  /** モデルの鍵と名前。端末にだけ置く。 */
+  api: Api;
+  /** 台本を作っている最中／失敗した相手。 */
+  generating: Record<string, 'busy' | 'error'>;
+
+  /** 自分のトーク（代理とのトーク＋止まっているもの＋引き継いだもの）。 */
   mine: Thread[];
   /** 代理人のトーク（まだ引き継いでいないもの）。 */
   proxies: Thread[];
@@ -69,6 +87,13 @@ export type Store = {
 
   /** トーク履歴を取り込む。読めなかったものは黙って落とす。 */
   importTexts: (texts: readonly string[]) => Promise<number>;
+  /** 履歴を足す。同じ相手のものは差し替える。 */
+  appendTexts: (texts: readonly string[]) => Promise<number>;
+  /** 代理へ言う。止める・再開する・申し送る。 */
+  tellAgent: (text: string) => Promise<void>;
+  setApi: (api: Api) => Promise<void>;
+  /** 取り込んだ相手の代理のやり取りを、履歴から作る。鍵が要る。 */
+  generateFor: (name: string) => Promise<void>;
   /** 代理応答をオンにする。ここから一周が始まる。 */
   enableLab: (persona: number) => Promise<void>;
   /** 代理応答をオフにする。動いていた交流は残らない。 */
@@ -106,6 +131,19 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [persistent, setPersistent] = useState(true);
   const [intake, setIntake] = useState<Intake | null>(null);
   const [transcripts, setTranscripts] = useState<Transcript[]>([]);
+  const [stored, setStored] = useState<StoredSeed[]>([]);
+  const [rulebook, setRulebook] = useState<{ rules: Rule[]; holds: Holds }>({ rules: [], holds: {} });
+  const [agentLog, setAgentLog] = useState<Message[]>([]);
+  const [api, setApiState] = useState<Api>({ key: '', model: DEFAULT_MODEL });
+  const [generating, setGenerating] = useState<Record<string, 'busy' | 'error'>>({});
+  const rulebookRef = useRef(rulebook);
+  useEffect(() => {
+    rulebookRef.current = rulebook;
+  }, [rulebook]);
+  const agentLogRef = useRef(agentLog);
+  useEffect(() => {
+    agentLogRef.current = agentLog;
+  }, [agentLog]);
   const [settings, setSettings] = useState<Settings>(() => freshSettings(new Date()));
   const [progress, setProgress] = useState<Progress>(EMPTY_PROGRESS);
   const [now, setNow] = useState(() => new Date());
@@ -141,14 +179,33 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       setPersistent(ok);
       if (!ok) return;
       db.requestPersistence().catch(() => undefined);
-      const [loadedIntake, loadedSettings, loadedProgress, loadedTranscripts] = await Promise.all([
-        db.readKv<Intake>(KV_INTAKE),
-        db.readKv<Partial<Settings>>(KV_SETTINGS),
-        db.readKv<Progress>(KV_PROGRESS),
-        db.readKv<Transcript[]>(KV_TRANSCRIPTS),
-      ]);
+      const [loadedIntake, loadedSettings, loadedProgress, loadedTranscripts, loadedSeeds, loadedRules, loadedAgent, loadedApi] =
+        await Promise.all([
+          db.readKv<Intake>(KV_INTAKE),
+          db.readKv<Partial<Settings>>(KV_SETTINGS),
+          db.readKv<Progress>(KV_PROGRESS),
+          db.readKv<Transcript[]>(KV_TRANSCRIPTS),
+          db.readKv<StoredSeed[]>(KV_SEEDS),
+          db.readKv<{ rules: Rule[]; holds: Holds }>(KV_RULES),
+          db.readKv<Message[]>(KV_AGENT),
+          db.readKv<Api>(KV_API),
+        ]);
       if (cancelled) return;
       if (loadedTranscripts) setTranscripts(loadedTranscripts);
+      if (loadedSeeds) setStored(loadedSeeds);
+      if (loadedRules) setRulebook(loadedRules);
+      // 代理応答をオンにしたまま、代理とのトークが空のことがある（前の版から続けた場合）。
+      // 最初の一通だけ入れておく。指示を書く場所がここだと分からないと、使えない
+      const own = loadedTranscripts ? ownNameOf(loadedTranscripts) : null;
+      const opening: Message[] =
+        loadedAgent && loadedAgent.length > 0
+          ? loadedAgent
+          : loadedIntake && loadedTranscripts && loadedTranscripts.length > 0
+            ? [{ at: Date.now(), mine: false, text: openingOf(own ?? 'あなた', loadedTranscripts.length) }]
+            : [];
+      setAgentLog(opening);
+      agentLogRef.current = opening;
+      if (loadedApi) setApiState({ key: loadedApi.key ?? '', model: loadedApi.model || DEFAULT_MODEL });
       // 履歴が無いのに代理応答だけオンになっている状態は作らない。
       // 代理は過去ログのある相手にしか出せないので、そこだけ残っても意味がない
       setIntake(loadedTranscripts && loadedTranscripts.length > 0 ? loadedIntake : null);
@@ -194,14 +251,17 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     void save(KV_PROGRESS, next);
   }, [intake, position.index, ready, save]);
 
+  /** 手書きの九人に、取り込んだ履歴から作ったものを足す。 */
+  const seeds = useMemo<CounterpartSeed[]>(() => [...COUNTERPARTS, ...stored.map(hydrateSeed)], [stored]);
+
   const threads = useMemo(() => {
     if (transcripts.length === 0) return [];
     // 代理応答がオフのあいだは、自分のトークだけが並ぶ普通のメッセンジャー
     const built = intake
-      ? buildThreads(now, transcripts, startedAt, settings.loopMs)
+      ? buildThreads(now, transcripts, startedAt, settings.loopMs, seeds, rulebook.holds, agentLog)
       : buildPlainThreads(transcripts, startedAt);
     return built.map((thread) => withState(thread, progress.states[thread.id]));
-  }, [intake, now, progress.states, settings.loopMs, startedAt, transcripts]);
+  }, [agentLog, intake, now, progress.states, rulebook.holds, seeds, settings.loopMs, startedAt, transcripts]);
 
   const threadsRef = useRef(threads);
   useEffect(() => {
@@ -244,17 +304,123 @@ export function StoreProvider({ children }: { children: ReactNode }) {
        * いたものを見せられる、という順序をここで作っている。残りは眺めている
        * あいだに増える。
        */
-      const nextIntake: Intake = { name: ownNameOf(transcripts) ?? 'あなた', persona, startedAt: isoTime(at) };
+      const own = ownNameOf(transcripts) ?? 'あなた';
+      const nextIntake: Intake = { name: own, persona, startedAt: isoTime(at) };
       const nextSettings = freshSettings(at);
       setIntake(nextIntake);
       setSettings(nextSettings);
       progressRef.current = EMPTY_PROGRESS;
       setProgress(EMPTY_PROGRESS);
+      // 代理から最初の一通。指示を書く場所がここだと、最初に分かるように
+      const opening: Message[] = agentLogRef.current.length > 0 ? agentLogRef.current : [{ at: at.getTime(), mine: false, text: openingOf(own, transcripts.length) }];
+      agentLogRef.current = opening;
+      setAgentLog(opening);
       await save(KV_INTAKE, nextIntake);
       await save(KV_SETTINGS, nextSettings);
       await save(KV_PROGRESS, EMPTY_PROGRESS);
+      await save(KV_AGENT, opening);
     },
     [save, transcripts],
+  );
+
+  const appendTexts = useCallback(
+    async (texts: readonly string[]) => {
+      const parsed = parseAll(texts);
+      if (parsed.length === 0) return 0;
+      // 同じ相手のものは差し替える。名前が鍵
+      const names = new Set(parsed.map((t) => t.name));
+      const next = [...transcripts.filter((t) => !names.has(t.name)), ...parsed];
+      setTranscripts(next);
+      await save(KV_TRANSCRIPTS, next);
+      return parsed.length;
+    },
+    [save, transcripts],
+  );
+
+  /**
+   * 代理へ言う。
+   *
+   * 名前と動詞が読めれば止める・再開する。読めなければ申し送りとして引き取り、
+   * 引継書の注意事項に載せる。返事は少し置いてから届く——即答すると、読んで
+   * いないように見える。
+   */
+  const tellAgent = useCallback(
+    async (text: string) => {
+      const trimmed = text.trim();
+      if (!trimmed) return;
+      const at = new Date();
+      const names = transcripts.map((t) => t.name);
+      const read = interpret(trimmed, names);
+      const rule: Rule = { id: newId('rule'), at: isoTime(at), text: trimmed, kind: read.kind, ...(read.target ? { target: read.target } : {}) };
+
+      const current = rulebookRef.current;
+      const holds: Holds = { ...current.holds };
+      if (rule.target && rule.kind === 'mute') {
+        const hold = holds[rule.target] ?? { since: null, total: 0 };
+        if (hold.since === null) holds[rule.target] = { ...hold, since: at.getTime() };
+      }
+      if (rule.target && rule.kind === 'unmute') {
+        const hold = holds[rule.target];
+        if (hold && hold.since !== null) holds[rule.target] = { since: null, total: hold.total + (at.getTime() - hold.since) };
+      }
+      const nextRulebook = { rules: [...current.rules, rule], holds };
+      rulebookRef.current = nextRulebook;
+      setRulebook(nextRulebook);
+
+      const mine: Message = { at: at.getTime(), mine: true, text: trimmed };
+      const withMine = [...agentLogRef.current, mine];
+      agentLogRef.current = withMine;
+      setAgentLog(withMine);
+      await save(KV_RULES, nextRulebook);
+      await save(KV_AGENT, withMine);
+
+      const live = threadsRef.current.filter((t) => t.kind === 'proxy' && !t.decision).map((t) => t.title);
+      const reply: Message = { at: at.getTime() + 1_400, mine: false, text: replyFor(rule, live) };
+      await new Promise((resolve) => setTimeout(resolve, 1_400));
+      const withReply = [...agentLogRef.current, reply];
+      agentLogRef.current = withReply;
+      setAgentLog(withReply);
+      await save(KV_AGENT, withReply);
+    },
+    [save, transcripts],
+  );
+
+  const setApi = useCallback(
+    async (next: Api) => {
+      const cleaned = { key: next.key.trim(), model: next.model.trim() || DEFAULT_MODEL };
+      setApiState(cleaned);
+      await save(KV_API, cleaned);
+    },
+    [save],
+  );
+
+  /**
+   * 取り込んだ相手の台本を作る。
+   *
+   * 作った瞬間の位置から現れるので、作ったらすぐ一通目が届き始める。
+   * 失敗したら失敗と出す。**壊れた台本で始めるより、無いほうがいい。**
+   */
+  const generateFor = useCallback(
+    async (name: string) => {
+      const transcript = transcripts.find((t) => t.name === name);
+      if (!transcript || !api.key || !intake) return;
+      setGenerating((g) => ({ ...g, [name]: 'busy' }));
+      try {
+        const phase = loopAt(new Date(), new Date(settings.startedAt).getTime(), settings.loopMs).phase / settings.loopMs;
+        const seed = await generateSeed(transcript, intake.name, intake.persona, api, phase);
+        const next = [...stored.filter((s) => s.name !== name), seed];
+        setStored(next);
+        await save(KV_SEEDS, next);
+        setGenerating((g) => {
+          const { [name]: _done, ...rest } = g;
+          return rest;
+        });
+      } catch (e) {
+        console.warn('台本を作れなかった', e);
+        setGenerating((g) => ({ ...g, [name]: 'error' }));
+      }
+    },
+    [api, intake, save, settings.loopMs, settings.startedAt, stored, transcripts],
   );
 
   /** 代理応答をオフにする。動いていた交流も、答えた確認も残らない。 */
@@ -262,8 +428,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     setIntake(null);
     progressRef.current = EMPTY_PROGRESS;
     setProgress(EMPTY_PROGRESS);
+    agentLogRef.current = [];
+    setAgentLog([]);
     await save(KV_INTAKE, null);
     await save(KV_PROGRESS, EMPTY_PROGRESS);
+    await save(KV_AGENT, []);
   }, [save]);
 
   const send = useCallback(
@@ -348,9 +517,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   }, [persistent]);
 
   const value = useMemo<Store>(() => {
+    const agent = threads.filter((t) => t.kind === 'agent');
     const mine = threads.filter((t) => t.kind === 'plain' || t.decision === 'inherit');
     const proxies = threads.filter((t) => t.kind === 'proxy' && t.decision !== 'inherit');
-    // 新しいやり取りが上へ。届いた瞬間に一覧が動くので、放置していても賑やか
+    // 新しいやり取りが上へ。届いた瞬間に一覧が動くので、放置していても賑やか。
+    // 代理とのトークだけは、いつも一番上に留める
     const byActivity = (a: Thread, b: Thread) => lastAt(b, now).localeCompare(lastAt(a, now));
     return {
       ready,
@@ -363,14 +534,23 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       settings,
       now,
       loop: { index: position.index, phase: position.phase, total: settings.loopMs },
-      mine: [...mine].sort(byActivity),
+      seeds,
+      holds: rulebook.holds,
+      rules: rulebook.rules,
+      api,
+      generating,
+      mine: [...agent, ...[...mine].sort(byActivity)],
       proxies: [...proxies].sort(byActivity),
       handoverFor: (threadId) => {
         const thread = threads.find((t) => t.id === threadId);
-        return thread && intake ? buildHandover(thread, intake, transcripts, now) : null;
+        return thread && intake ? buildHandover(thread, intake, transcripts, now, rulebook.rules) : null;
       },
       readyCount: proxies.filter((t) => isReady(t, now)).length,
       importTexts,
+      appendTexts,
+      tellAgent,
+      setApi,
+      generateFor,
       enableLab,
       disableLab,
       send,
@@ -382,10 +562,19 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       reset,
     };
   }, [
+    agentLog,
     answerAsk,
+    api,
+    appendTexts,
     disableLab,
     enableLab,
+    generateFor,
+    generating,
     importTexts,
+    rulebook,
+    seeds,
+    setApi,
+    tellAgent,
     transcripts,
     decide,
     delegate,

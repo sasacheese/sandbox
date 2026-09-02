@@ -13,7 +13,7 @@
  */
 
 import type { Message } from './transcript.ts';
-import type { Source } from './pools.ts';
+import type { CounterpartSeed, Source } from './pools.ts';
 
 declare const brand: unique symbol;
 type Brand<T, B extends string> = T & { readonly [brand]: B };
@@ -103,7 +103,14 @@ export type Bubble = {
 /** 確認への答え。`guess` は「代理にまかせる」——作り話になる。 */
 export type AskAnswer = 'yes' | 'no' | 'guess';
 
-export type ThreadKind = 'plain' | 'proxy';
+/**
+ * トークの種類。
+ *
+ * - `plain` … 自分のトーク。取り込んだ履歴がそのまま並ぶ
+ * - `proxy` … 代理が相手の代理と続けているトーク
+ * - `agent` … **自分の代理とのトーク。**指示を出す場所。一件だけ
+ */
+export type ThreadKind = 'plain' | 'proxy' | 'agent';
 
 export type Thread = {
   id: string;
@@ -112,6 +119,15 @@ export type Thread = {
   title: string;
   /** proxy のときだけ。lib/pools.ts の相手の id。 */
   seedId?: string;
+  /** proxy のときだけ。台本そのもの（手書きか、取り込んだ履歴から生成したか）。 */
+  seed?: CounterpartSeed;
+  /**
+   * 止めているあいだの記録。
+   *
+   * 代理へ「◯◯には返さないで」と言うと、そのトークの時計が止まる。`since` が
+   * 入っているあいだは進まず、`total` は止めていた合計。再開しても飛ばない。
+   */
+  hold?: { since: number | null; total: number };
   /**
    * 取り込んだ過去ログ。
    *

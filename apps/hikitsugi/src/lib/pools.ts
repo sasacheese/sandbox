@@ -81,6 +81,15 @@ export type CounterpartSeed = {
   id: string;
   /** 取り込んだ履歴の相手の名前と一致させる。ここで履歴と結びつく。 */
   name: string;
+  /**
+   * 取り込んだ履歴から生成した台本のとき、その時間割。
+   *
+   * 手書きの九人は lib/loop.ts の表に載っているが、生成したものは
+   * **作った瞬間の位置**から始まるので、台本自身が持つ。
+   */
+  slot?: { at: number; days: number; gap: number };
+  /** 取り込んだ履歴から生成したもの。 */
+  generated?: boolean;
   /** 一覧と会話の見出しに出る短い接点。 */
   short: string;
   /** 引継書に出る接点の詳細。 */

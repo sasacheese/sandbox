@@ -20,6 +20,7 @@ export function Avatar({
   progress,
   mark,
   live = false,
+  agent = false,
 }: {
   name: string;
   size?: number;
@@ -29,6 +30,8 @@ export function Avatar({
   mark?: string;
   /** いまやり取りが動いている。環が脈打つ。 */
   live?: boolean;
+  /** 自分の代理。名前の色ではなく藍で塗る。 */
+  agent?: boolean;
 }) {
   const ringed = inherited !== undefined || progress !== undefined;
   const stroke = size >= 40 ? 3 : 2.5;
@@ -74,7 +77,7 @@ export function Avatar({
         </svg>
       ) : null}
       <span
-        className="avatar__face"
+        className={`avatar__face${agent ? ' avatar__face--agent' : ''}`}
         style={{ background: `hsl(${hueOf(name)} 22% 44%)`, fontSize: size >= 40 ? 15 : 12 }}
         aria-hidden="true"
       >
