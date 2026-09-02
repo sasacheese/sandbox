@@ -51,8 +51,21 @@ export type Belief = {
 /** 相手側の人間の判断。引き継ぎを申し出た時点でもう決まっている。 */
 export type TheirDecision = 'inherit' | 'refuse' | 'agent_only';
 
-/** 本人の判断。 */
-export type Decision = 'inherit' | 'extend' | 'end' | 'agent_only';
+/**
+ * 本人の判断。
+ *
+ * `returned` は差し戻し——引き継いだあとで「やっぱり代理に戻す」を選んだ。
+ * トークは代理タブへ戻り、代理が続きを打ち始める。**近さは戻らない。**
+ */
+export type Decision = 'inherit' | 'extend' | 'end' | 'agent_only' | 'returned';
+
+/**
+ * 踏み外し。自分で打った文が、引継書に書かれた作法から外れていたところ。
+ *
+ * 左に何が違うか、右に代理はどうだったか。判定の材料は引継書がすでに持っている
+ * （呼び方・句点の癖・返信の速さ・一通の長さ・触れてはいけないこと）。
+ */
+export type Slip = { label: string; detail: string };
 
 /** 自分が打ったもの、または代理人に打たせたもの。 */
 export type Sent = {
@@ -61,6 +74,10 @@ export type Sent = {
   text: string;
   /** 代理人に任せた返信。 */
   byAgent: boolean;
+  /** 代理の下書きをそのまま送った。近さは下がらない。 */
+  draft?: boolean;
+  /** 自分で打ったときの踏み外し。送信後に淡々と出す。 */
+  slips?: Slip[];
 };
 
 /** 画面に出す一通。トークの種類にかかわらずこの形へ落とす。 */
@@ -91,6 +108,17 @@ export type Bubble = {
   silence?: number;
   /** この一通の前に挟む仕切り（引き継ぎの位置）。 */
   divider?: string;
+  /** 代理の下書きをそのまま送ったもの。 */
+  draft?: boolean;
+  /** 自分で打った文の踏み外し。吹き出しの下に出す。 */
+  slips?: Slip[];
+  /**
+   * 相手側の、人間か代理か分からない一通。
+   *
+   * 引き継いだあとの相手側は、白（人間）と薄藍（代理）で塗り分けない。
+   * **検証はできない。**訊けば「はい、本人です」と返るが、それだけ。
+   */
+  unknown?: boolean;
   /**
    * 代理人からの確認。吹き出しではなく、本人への問いとして描く。
    *
@@ -106,10 +134,35 @@ export type Bubble = {
     /** 代理とのトークに出すとき、答えを届ける先のトーク。 */
     threadId?: string;
   };
+  /**
+   * 「引き継げた感じ、する？」。代理とのトークにだけ出る。
+   *
+   * 引き継いだあと数通やり取りすると届く。答えても代理は「そう」と言うだけ。
+   */
+  poll?: {
+    threadId: string;
+    answered?: FeelingAnswer;
+  };
 };
 
 /** 確認への答え。`guess` は「代理にまかせる」——作り話になる。 */
 export type AskAnswer = 'yes' | 'no' | 'guess';
+
+/**
+ * 「引き継げた感じ、する？」への答え。
+ *
+ * どれを選んでも代理は「そう」としか言わない。**作品は判定を持たない。**
+ * 答えだけが残り、あとで見返せる。
+ */
+export type FeelingAnswer = 'yes' | 'notyet' | 'unsure';
+
+export type Feeling = {
+  at: IsoTime;
+  threadId: string;
+  /** 相手の名前。一周が終わってトークが消えても、誰のことだったか分かるように。 */
+  name: string;
+  answer: FeelingAnswer;
+};
 
 /**
  * トークの種類。
@@ -169,6 +222,8 @@ export type Thread = {
   /** 本人の判断。決めるまで undefined。 */
   decision?: Decision;
   inheritedAt?: IsoTime;
+  /** 代理に戻した時刻。ここから代理が続きを打つ。 */
+  returnedAt?: IsoTime;
   /** 引き継いだあとの親密度の増減。 */
   delta: number;
   /** 自分が打ったもの。 */
@@ -177,6 +232,8 @@ export type Thread = {
   answers: Record<string, AskAnswer>;
   /** 既読にした時刻。未読の数を出すために持つ。 */
   readAt?: IsoTime;
+  /** 「相手は本人ですか？」と訊いた時刻。答えはいつも同じ。 */
+  checks?: IsoTime[];
 };
 
 /**
@@ -191,8 +248,10 @@ export type ThreadState = {
   answers: Record<string, AskAnswer>;
   decision?: Decision;
   inheritedAt?: IsoTime;
+  returnedAt?: IsoTime;
   delta: number;
   readAt?: IsoTime;
+  checks?: IsoTime[];
 };
 
 /** 引継書。proxy のトークから開く。 */
@@ -221,4 +280,6 @@ export type Handover = {
   tally: { messages: number; secrets: number; conflicts: number; otherAgents: number };
   notes: string[];
   theirs: TheirDecision;
+  /** 相手が代理応答を使っていない。**相手は、代理と話していたことを知らない。** */
+  solo?: boolean;
 };

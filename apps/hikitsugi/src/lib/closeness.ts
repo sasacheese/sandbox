@@ -16,6 +16,19 @@
 export const DECAY_PER_DAY = 0.6;
 
 /**
+ * 引き継いだあと、自分で打つと下がるぶん。
+ *
+ * 代理の下書きをそのまま送れば下がらない。自分で打つと下がり、**引継書の作法
+ * から外れた数だけ、さらに下がる**——代理のほうが上手いのは、作法を守るからだ。
+ */
+export const SELF_SEND_DROP = 8;
+export const SLIP_DROP = 3;
+
+export function dropFor(slips: number): number {
+  return SELF_SEND_DROP + SLIP_DROP * Math.max(0, slips);
+}
+
+/**
  * 代理人同士の親密度。
  *
  * 人間相手の関係より高く出る。代理人は返信が早く、相手の話を忘れず、

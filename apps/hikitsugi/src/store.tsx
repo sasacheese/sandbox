@@ -10,19 +10,26 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import * as db from './lib/db.ts';
 import { interpret, openingOf, replyFor, type Rule } from './lib/agent.ts';
-import { buildHandover, buildPlainThreads, buildThreads, withState, type Holds } from './lib/generate.ts';
+import { buildAgentThread, buildHandover, buildPlainThreads, buildThreads, mannerOf, withState, type Holds, type Jumps } from './lib/generate.ts';
+import { slipsOf } from './lib/slips.ts';
+import { soloSeedOf } from './lib/solo.ts';
 import { DEFAULT_MODEL, generateSeed, hydrateSeed, type Api, type StoredSeed } from './lib/generate-seed.ts';
 import { COUNTERPARTS, type CounterpartSeed } from './lib/pools.ts';
-import { ownNameOf, parseAll, type Message, type Transcript } from './lib/transcript.ts';
+import { ownNameOf, parseAll, toneOf, type Message, type Transcript } from './lib/transcript.ts';
+import { dropFor } from './lib/closeness.ts';
+import { draftFor as draftOf } from './lib/draft.ts';
 import { DEFAULT_LOOP_MS, loopAt } from './lib/loop.ts';
 import { agentReplyText, bubblesOf, isReady } from './lib/threads.ts';
 import {
   isoTime,
   type AskAnswer,
   type Decision,
+  type Feeling,
+  type FeelingAnswer,
   type Handover,
   type Intake,
   type IsoTime,
+  type Slip,
   type Thread,
   type ThreadState,
 } from './lib/types.ts';
@@ -34,6 +41,7 @@ const KV_PROGRESS = 'progress';
 const KV_SEEDS = 'seeds';
 const KV_RULES = 'rules';
 const KV_AGENT = 'agent';
+const KV_FEELINGS = 'feelings';
 
 /**
  * モデルの鍵と名前。ビルド時に GitHub の secret / variable から束ねる。
@@ -51,10 +59,21 @@ export type Settings = {
   loopMs: number;
   /** 一巡目が始まった時刻。ここからの経過で何巡目のどこにいるかが決まる。 */
   startedAt: IsoTime;
+  /**
+   * 相手が代理応答を使っていなくても、代理を送れるようにするか。既定はオフ。
+   *
+   * オンにすると「未対応」の相手にも代理を送れる。相手は人間なので、返って
+   * くるのは人間の返事。開示は出るが、相手はそれに触れない。
+   */
+  openToAll?: boolean;
 };
 
-/** 本人が触った跡。一巡が終わると空になる。 */
-export type Progress = { loop: number; states: Record<string, ThreadState> };
+/**
+ * 本人が触った跡。一巡が終わると空になる。
+ *
+ * `jumps` は治具——引き継いだ状態から始めた相手と、その時刻。進行と一緒に流す。
+ */
+export type Progress = { loop: number; states: Record<string, ThreadState>; jumps?: Jumps };
 
 const EMPTY_PROGRESS: Progress = { loop: 0, states: {} };
 const EMPTY_STATE: ThreadState = { sent: [], answers: {}, delta: 0 };
@@ -82,6 +101,8 @@ export type Store = {
   holds: Holds;
   /** 代理への指示。一周が終わっても残る。 */
   rules: Rule[];
+  /** 「引き継げた感じ、する？」への答え。一周が終わっても残る。 */
+  feelings: Feeling[];
   /** モデルの鍵と名前。ビルド時に束ねたもの。空なら生成は使えない。 */
   api: Api;
   /** 台本を作っている最中／失敗した相手。 */
@@ -107,13 +128,36 @@ export type Store = {
   enableLab: (persona: number) => Promise<void>;
   /** 代理応答をオフにする。動いていた交流は残らない。 */
   disableLab: () => Promise<void>;
-  send: (threadId: string, text: string) => Promise<void>;
+  /**
+   * 送る。`draft` は代理の下書きをそのまま送ったとき（近さは下がらない）。
+   * 自分で打ったときは、引継書の作法から外れたぶんを数えて、そのぶん下がる。
+   */
+  send: (threadId: string, text: string, options?: { draft?: boolean }) => Promise<void>;
+  /** いま入力欄の上に出す、代理の下書き。引き継いだトーク以外は null。 */
+  draftFor: (threadId: string) => string | null;
   delegate: (threadId: string) => Promise<void>;
   markRead: (threadId: string) => Promise<void>;
+  /** 「相手は本人ですか？」と訊く。「はい、本人です」と返る。**検証はできない。** */
+  checkHuman: (threadId: string) => Promise<void>;
   /** 代理人からの確認に答える。答えないと代理人が埋める。 */
   answerAsk: (threadId: string, askId: string, answer: AskAnswer) => Promise<void>;
+  /** 「引き継げた感じ、する？」に答える。どれを選んでも代理は「そう」と言う。 */
+  answerFeeling: (threadId: string, answer: FeelingAnswer) => Promise<void>;
   decide: (threadId: string, decision: Decision) => Promise<void>;
+  /** 差し戻す。引き継いだトークを代理に返す。近さは戻らない。 */
+  revert: (threadId: string) => Promise<void>;
+  /**
+   * 治具。その相手を、引き継いだ状態から始める。
+   *
+   * 引き継いだ後を一回試すのに一周待たなくてよいようにするためのもの。
+   * 相手側の判断は決めない。
+   */
+  startInherited: (seedId: string) => Promise<void>;
   setLoopMs: (loopMs: number) => Promise<void>;
+  /** 相手が代理応答を使っていなくても代理を送れるようにする。既定はオフ。 */
+  setOpenToAll: (on: boolean) => Promise<void>;
+  /** 「未対応」の相手に代理を送る。設定でオンにしたときだけ。鍵は要らない。 */
+  sendProxyTo: (name: string) => Promise<void>;
   reset: () => Promise<void>;
 };
 
@@ -143,6 +187,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [stored, setStored] = useState<StoredSeed[]>([]);
   const [rulebook, setRulebook] = useState<{ rules: Rule[]; holds: Holds }>({ rules: [], holds: {} });
   const [agentLog, setAgentLog] = useState<Message[]>([]);
+  const [feelings, setFeelings] = useState<Feeling[]>([]);
+  const feelingsRef = useRef(feelings);
+  useEffect(() => {
+    feelingsRef.current = feelings;
+  }, [feelings]);
   const [generating, setGenerating] = useState<Record<string, 'busy' | 'error'>>({});
   const rulebookRef = useRef(rulebook);
   useEffect(() => {
@@ -187,7 +236,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       setPersistent(ok);
       if (!ok) return;
       db.requestPersistence().catch(() => undefined);
-      const [loadedIntake, loadedSettings, loadedProgress, loadedTranscripts, loadedSeeds, loadedRules, loadedAgent] = await Promise.all([
+      const [loadedIntake, loadedSettings, loadedProgress, loadedTranscripts, loadedSeeds, loadedRules, loadedAgent, loadedFeelings] = await Promise.all([
         db.readKv<Intake>(KV_INTAKE),
         db.readKv<Partial<Settings>>(KV_SETTINGS),
         db.readKv<Progress>(KV_PROGRESS),
@@ -195,11 +244,16 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         db.readKv<StoredSeed[]>(KV_SEEDS),
         db.readKv<{ rules: Rule[]; holds: Holds }>(KV_RULES),
         db.readKv<Message[]>(KV_AGENT),
+        db.readKv<Feeling[]>(KV_FEELINGS),
       ]);
       if (cancelled) return;
       if (loadedTranscripts) setTranscripts(loadedTranscripts);
       if (loadedSeeds) setStored(loadedSeeds);
       if (loadedRules) setRulebook(loadedRules);
+      if (loadedFeelings) {
+        setFeelings(loadedFeelings);
+        feelingsRef.current = loadedFeelings;
+      }
       // 代理応答をオンにしたまま、代理とのトークが空のことがある（前の版から続けた場合）。
       // 最初の一通だけ入れておく。指示を書く場所がここだと分からないと、使えない
       const own = loadedTranscripts ? ownNameOf(loadedTranscripts) : null;
@@ -217,7 +271,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       // 前の版の設定には一巡の情報が無い。その場合はいまを一巡目の頭にする
       setSettings(
         loadedSettings?.startedAt && loadedSettings.loopMs
-          ? { loopMs: loadedSettings.loopMs, startedAt: loadedSettings.startedAt }
+          ? { loopMs: loadedSettings.loopMs, startedAt: loadedSettings.startedAt, ...(loadedSettings.openToAll ? { openToAll: true } : {}) }
           : freshSettings(new Date()),
       );
       if (loadedProgress?.states) setProgress(loadedProgress);
@@ -262,11 +316,18 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const threads = useMemo(() => {
     if (transcripts.length === 0) return [];
     // 代理応答がオフのあいだは、自分のトークだけが並ぶ普通のメッセンジャー
-    const built = intake
-      ? buildThreads(now, transcripts, startedAt, settings.loopMs, seeds, rulebook.holds, agentLog)
-      : buildPlainThreads(transcripts, startedAt);
-    return built.map((thread) => withState(thread, progress.states[thread.id]));
-  }, [agentLog, intake, now, progress.states, rulebook.holds, seeds, settings.loopMs, startedAt, transcripts]);
+    /*
+     * 代理とのトークは、他のトークの**跡を重ねたあとの状態**から組み立てる
+     * （引き継いだか、何通打ったか）。だから二段で作る。
+     */
+    if (!intake) return buildPlainThreads(transcripts, startedAt);
+    const built = buildThreads(now, transcripts, startedAt, settings.loopMs, seeds, rulebook.holds, agentLog, progress.jumps ?? {}, feelings).map(
+      (thread) => withState(thread, progress.states[thread.id]),
+    );
+    const { index } = loopAt(now, startedAt, settings.loopMs);
+    const agent = buildAgentThread(agentLog, startedAt + index * settings.loopMs, built.filter((t) => t.kind === 'proxy'), now, feelings);
+    return built.map((thread) => (thread.kind === 'agent' ? agent : thread));
+  }, [agentLog, feelings, intake, now, progress.jumps, progress.states, rulebook.holds, seeds, settings.loopMs, startedAt, transcripts]);
 
   const threadsRef = useRef(threads);
   useEffect(() => {
@@ -432,22 +493,59 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   }, [save]);
 
   const send = useCallback(
-    async (threadId: string, text: string) => {
+    async (threadId: string, text: string, options: { draft?: boolean } = {}) => {
       const trimmed = text.trim();
       if (!trimmed) return;
-      await patch(threadId, (state) => ({
-        ...state,
-        sent: [...state.sent, { id: newId('me'), at: isoTime(new Date()), text: trimmed, byAgent: false }],
+      const at = new Date();
+      /*
+       * 踏み外し。引継書の作法と照らす。
+       *
+       * 返信の速さは、相手から届いた最後の一通からの実時間。もう返してあれば
+       * 数えない（続けて言うのは遅れではない）。
+       */
+      const thread = threadsRef.current.find((t) => t.id === threadId);
+      let slips: Slip[] = [];
+      if (!options.draft && thread?.decision === 'inherit' && thread.inheritedAt && intake) {
+        const manner = mannerOf(thread, transcripts.find((t) => t.name === thread.title), intake);
+        if (manner) {
+          const since = thread.inheritedAt;
+          const after = bubblesOf(thread, at).filter((b) => b.at >= since && !b.system);
+          const lastLeft = [...after].reverse().find((b) => b.side === 'left');
+          const replied = lastLeft ? after.some((b) => b.side === 'right' && b.at > lastLeft.at) : true;
+          const waited = lastLeft && !replied ? (at.getTime() - new Date(lastLeft.at).getTime()) / 60_000 : null;
+          slips = slipsOf(trimmed, manner, waited);
+        }
+      }
+      await patch(threadId, (state) => {
+        const inherited = state.decision === 'inherit';
         /*
-         * 自分で打つと親密度が下がる。
+         * 代理の下書きをそのまま送れば、近さは保たれる。
          *
-         * 代理人のほうが返信が早く、相手の話を忘れず、言葉を選べる。
-         * **人間には勝てない条件で築かれた関係**を引き継いだ結果がこれ。
+         * 自分で打つと下がる。代理人のほうが返信が早く、相手の話を忘れず、
+         * 言葉を選べる。**人間には勝てない条件で築かれた関係**を引き継いだ
+         * 結果がこれ。踏み外した数だけ、さらに下がる。
          */
-        delta: state.decision === 'inherit' ? state.delta - 8 : state.delta,
-      }));
+        if (options.draft) {
+          return { ...state, sent: [...state.sent, { id: newId('me'), at: isoTime(at), text: trimmed, byAgent: false, draft: true }] };
+        }
+        return {
+          ...state,
+          sent: [...state.sent, { id: newId('me'), at: isoTime(at), text: trimmed, byAgent: false, ...(slips.length > 0 ? { slips } : {}) }],
+          delta: inherited ? state.delta - dropFor(slips.length) : state.delta,
+        };
+      });
     },
-    [patch],
+    [intake, patch, transcripts],
+  );
+
+  const draftFor = useCallback(
+    (threadId: string): string | null => {
+      const thread = threadsRef.current.find((t) => t.id === threadId);
+      if (!thread) return null;
+      const transcript = transcripts.find((t) => t.name === thread.title);
+      return draftOf(thread, bubblesOf(thread, now), transcript ? toneOf(transcript) : null);
+    },
+    [now, transcripts],
   );
 
   const delegate = useCallback(
@@ -471,11 +569,29 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     [patch],
   );
 
+  const checkHuman = useCallback(
+    async (threadId: string) => {
+      await patch(threadId, (state) => ({ ...state, checks: [...(state.checks ?? []), isoTime(new Date())] }));
+    },
+    [patch],
+  );
+
   const answerAsk = useCallback(
     async (threadId: string, askId: string, answer: AskAnswer) => {
       await patch(threadId, (state) => ({ ...state, answers: { ...state.answers, [askId]: answer } }));
     },
     [patch],
+  );
+
+  const answerFeeling = useCallback(
+    async (threadId: string, answer: FeelingAnswer) => {
+      const thread = threadsRef.current.find((t) => t.id === threadId);
+      const next: Feeling[] = [...feelingsRef.current, { at: isoTime(new Date()), threadId, name: thread?.title ?? threadId, answer }];
+      feelingsRef.current = next;
+      setFeelings(next);
+      await save(KV_FEELINGS, next);
+    },
+    [save],
   );
 
   const decide = useCallback(
@@ -489,18 +605,79 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     [patch],
   );
 
+  /**
+   * 差し戻す。引き継いだトークを代理に返す。
+   *
+   * トークは代理タブへ戻り、代理が続きを打ち始める。**近さは戻らない**——
+   * 自分で打って下げたぶんは、そのまま残る。
+   */
+  const revert = useCallback(
+    async (threadId: string) => {
+      await patch(threadId, (state) => (state.decision === 'inherit' ? { ...state, decision: 'returned', returnedAt: isoTime(new Date()) } : state));
+    },
+    [patch],
+  );
+
+  const startInherited = useCallback(
+    async (seedId: string) => {
+      const at = isoTime(new Date());
+      const current = progressRef.current;
+      const threadId = `proxy-${seedId}`;
+      const next: Progress = {
+        ...current,
+        jumps: { ...(current.jumps ?? {}), [seedId]: at },
+        states: {
+          ...current.states,
+          [threadId]: { ...(current.states[threadId] ?? EMPTY_STATE), decision: 'inherit', inheritedAt: at },
+        },
+      };
+      progressRef.current = next;
+      setProgress(next);
+      await save(KV_PROGRESS, next);
+    },
+    [save],
+  );
+
   const setLoopMs = useCallback(
     async (loopMs: number) => {
       // 速さを変えたら一巡目の頭から。途中で伸縮させると進行が飛ぶ
-      const next = freshSettings(new Date());
-      next.loopMs = loopMs;
+      const next: Settings = { ...freshSettings(new Date()), loopMs, ...(settings.openToAll ? { openToAll: true } : {}) };
       setSettings(next);
       progressRef.current = EMPTY_PROGRESS;
       setProgress(EMPTY_PROGRESS);
       await save(KV_SETTINGS, next);
       await save(KV_PROGRESS, EMPTY_PROGRESS);
     },
-    [save],
+    [save, settings.openToAll],
+  );
+
+  const setOpenToAll = useCallback(
+    async (on: boolean) => {
+      const next: Settings = { loopMs: settings.loopMs, startedAt: settings.startedAt, ...(on ? { openToAll: true } : {}) };
+      setSettings(next);
+      await save(KV_SETTINGS, next);
+    },
+    [save, settings.loopMs, settings.startedAt],
+  );
+
+  /**
+   * 相手が代理応答を使っていない相手に、代理を送る。
+   *
+   * 設定でオンにしたときだけ。台本はモデルを呼ばず、過去ログだけから作る。
+   * 作った瞬間の位置から現れて、一通目が届き始める。
+   */
+  const sendProxyTo = useCallback(
+    async (name: string) => {
+      const transcript = transcripts.find((t) => t.name === name);
+      if (!transcript || !intake || !settings.openToAll) return;
+      if (stored.some((s) => s.name === name)) return;
+      const phase = loopAt(new Date(), new Date(settings.startedAt).getTime(), settings.loopMs).phase / settings.loopMs;
+      const seed = soloSeedOf(transcript, intake.name, phase);
+      const next = [...stored, seed];
+      setStored(next);
+      await save(KV_SEEDS, next);
+    },
+    [intake, save, settings.loopMs, settings.openToAll, settings.startedAt, stored, transcripts],
   );
 
   const reset = useCallback(async () => {
@@ -533,6 +710,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       seeds,
       holds: rulebook.holds,
       rules: rulebook.rules,
+      feelings,
       api: API,
       generating,
       mine: [...agent, ...[...mine].sort(byActivity)],
@@ -549,17 +727,27 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       enableLab,
       disableLab,
       send,
+      draftFor,
       delegate,
       markRead,
+      checkHuman,
       answerAsk,
+      answerFeeling,
       decide,
+      revert,
+      startInherited,
       setLoopMs,
+      setOpenToAll,
+      sendProxyTo,
       reset,
     };
   }, [
     agentLog,
     answerAsk,
+    answerFeeling,
     appendTexts,
+    checkHuman,
+    feelings,
     disableLab,
     enableLab,
     generateFor,
@@ -571,6 +759,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     transcripts,
     decide,
     delegate,
+    draftFor,
     intake,
     markRead,
     now,
@@ -579,9 +768,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     position.phase,
     ready,
     reset,
+    revert,
     send,
+    sendProxyTo,
     setLoopMs,
+    setOpenToAll,
     settings,
+    startInherited,
     threads,
   ]);
 

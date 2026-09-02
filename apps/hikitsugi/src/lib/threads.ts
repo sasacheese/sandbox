@@ -11,7 +11,17 @@
  * 日付は表示のうえの目盛りとして残す（「12 日目」）。
  */
 
-import { AGENT_REPLIES, AUTO_REPLIES, followUpsByAgent, followUpsByHuman, SCRIPT_SCALE, type CounterpartSeed } from './pools.ts';
+import {
+  afterReturn,
+  AGENT_REPLIES,
+  AUTO_REPLIES,
+  followUpsByAgent,
+  followUpsByHuman,
+  followUpsSolo,
+  followUpsUnknown,
+  SCRIPT_SCALE,
+  type CounterpartSeed,
+} from './pools.ts';
 import { scaleDay } from './loop.ts';
 import type { AskAnswer, Bubble, Thread } from './types.ts';
 
@@ -58,10 +68,42 @@ export function postsShown(thread: Thread, now: Date): number {
   return Math.max(0, Math.min(thread.posts, Math.floor(runningMs(thread, now) / thread.gapMs)));
 }
 
-/** 引き継いでから、どれだけ間が空いたか（一通ぶんを一日と見る）。 */
+/**
+ * 引き継いでから、どれだけ間が空いたか（一通ぶんを一日と見る）。
+ *
+ * 代理に戻したあとは、戻した時点で止まる。**近さは戻らないし、それ以上
+ * 下がりもしない**——代理が続けているあいだは、代理が保つ。
+ */
 export function daysSinceInherit(thread: Thread, now: Date): number {
   if (!thread.inheritedAt) return 0;
-  return Math.max(0, Math.floor((now.getTime() - new Date(thread.inheritedAt).getTime()) / thread.gapMs));
+  const until = thread.returnedAt ? Math.min(now.getTime(), new Date(thread.returnedAt).getTime()) : now.getTime();
+  return Math.max(0, Math.floor((until - new Date(thread.inheritedAt).getTime()) / thread.gapMs));
+}
+
+/**
+ * 差し戻したあとに代理が続けるぶん。戻した時刻から一通ずつ等間隔に届く。
+ *
+ * `next` は次の一通（「…」を出すため）。出し切ったら null。
+ */
+export function returnedPosts(thread: Thread, now: Date): { shown: Bubble[]; next: { side: 'left' | 'right'; at: number } | null } {
+  if (thread.decision !== 'returned' || !thread.returnedAt || !thread.seed) return { shown: [], next: null };
+  const returnedAt = new Date(thread.returnedAt).getTime();
+  const lines = afterReturn(thread.seed.joke.phrase);
+  const count = Math.max(0, Math.min(lines.length, Math.floor((now.getTime() - returnedAt) / thread.gapMs)));
+  const shown: Bubble[] = lines.slice(0, count).map((line, index) => ({
+    id: `r-${thread.id}-${index}`,
+    side: line.side === 'yours' ? 'right' : 'left',
+    text: line.text,
+    at: iso(returnedAt + (index + 1) * thread.gapMs),
+    dayLabel: `戻してから ${index + 1} 日`,
+    byAgent: line.side === 'yours',
+    ...(line.side === 'yours' ? { source: 'style' as const } : { unknown: true }),
+  }));
+  const upcoming = lines[count];
+  return {
+    shown,
+    next: upcoming ? { side: upcoming.side === 'yours' ? 'right' : 'left', at: returnedAt + (count + 1) * thread.gapMs } : null,
+  };
 }
 
 /** 台本を出し切ったか。出し切ると引継書を読める。 */
@@ -82,9 +124,11 @@ export function quietDaysOf(thread: Thread, now: Date): number {
   return Math.max(0, Math.floor((now.getTime() - last.at) / 86_400_000));
 }
 
-/** いまやり取りが動いているか（残りがあり、まだ判断していない）。 */
+/** いまやり取りが動いているか（残りがあり、まだ判断していない。差し戻して代理が続けている間も）。 */
 export function isLive(thread: Thread, now: Date): boolean {
-  if (thread.kind !== 'proxy' || thread.decision || isHeld(thread)) return false;
+  if (thread.kind !== 'proxy' || isHeld(thread)) return false;
+  if (thread.decision === 'returned') return returnedPosts(thread, now).next !== null;
+  if (thread.decision) return false;
   return postsShown(thread, now) < thread.posts;
 }
 
@@ -97,6 +141,7 @@ export function isLive(thread: Thread, now: Date): boolean {
 export function nextPost(thread: Thread, now: Date): { side: 'left' | 'right'; at: number } | null {
   const seed = thread.seed;
   if (!seed || !isLive(thread, now)) return null;
+  if (thread.decision === 'returned') return returnedPosts(thread, now).next;
   const shown = postsShown(thread, now);
   const item = itemsOf(seed, thread, thread.days ?? SCRIPT_SCALE).future[shown];
   if (!item) return null;
@@ -159,8 +204,9 @@ function itemsOf(seed: CounterpartSeed, thread: Thread, days: number): { past: I
         text: line.text,
         at: iso(at),
         dayLabel: `${day} 日目`,
-        byAgent: true,
-        // 相手側の発言は、こちらから見れば全部「相手の代理から聞いたこと」
+        // 相手が代理応答を使っていなければ、相手側は人間（白）
+        byAgent: line.side === 'yours' || !seed.solo,
+        // 相手側の発言は、こちらから見れば全部「相手から聞いたこと」
         source: line.side === 'yours' ? line.source ?? 'style' : 'them',
         ...(line.from ? { from: line.from } : {}),
         ...(line.silence ? { silence: Math.max(1, Math.round((line.silence / SCRIPT_SCALE) * days)) } : {}),
@@ -239,7 +285,8 @@ function proxyBubbles(thread: Thread, now: Date): Bubble[] {
     at: iso(created - (past.length + 1) * gapMs),
     dayLabel: '',
     byAgent: false,
-    system: 'このトークは自動応答です。相手側も同じです。（AI法 第50条）',
+    // 相手が代理応答を使っていなければ「相手側も同じ」とは言えない。開示は出る。**相手はそれに触れない**
+    system: seed.solo ? 'このトークは自動応答です。（AI法 第50条）' : 'このトークは自動応答です。相手側も同じです。（AI法 第50条）',
   };
 
   /*
@@ -330,15 +377,26 @@ function proxyBubbles(thread: Thread, now: Date): Bubble[] {
     return out;
   }
 
-  if (!thread.inheritedAt || thread.decision !== 'inherit') return out;
+  if (!thread.inheritedAt || (thread.decision !== 'inherit' && thread.decision !== 'returned')) return out;
 
   // ここから先は人間の区間。仕切りを一枚挟む
   const inheritedAt = new Date(thread.inheritedAt).getTime();
+  // 差し戻したあとは、相手からの言葉もそこで止まる（続きは代理が引き取る）
   const sinceInherit = daysSinceInherit(thread, now);
-  const byAgent = thread.theirs === 'agent_only';
-  const follows = byAgent
-    ? followUpsByAgent(callsOf(thread), seed.joke.phrase)
-    : followUpsByHuman(callsOf(thread), seed.joke.phrase);
+  /*
+   * 相手側が人間か代理かは、**吹き出しに書かない。**
+   *
+   * 引継の結果に相手の判断が書いてあっても、トークの中では確かめられない。
+   * 相手側の判断が決まっていない（治具で始めた）ときは、どちらの言葉が届くかも
+   * ここで決めるが、表には出さない。
+   */
+  const follows = seed.solo
+    ? followUpsSolo(callsOf(thread), seed.joke.phrase)
+    : thread.theirs === 'agent_only'
+      ? followUpsByAgent(callsOf(thread), seed.joke.phrase)
+      : thread.theirs === undefined
+        ? followUpsUnknown(callsOf(thread), seed.joke.phrase)
+        : followUpsByHuman(callsOf(thread), seed.joke.phrase);
 
   const human: Bubble[] = follows
     .filter((f) => f.day <= sinceInherit)
@@ -348,8 +406,41 @@ function proxyBubbles(thread: Thread, now: Date): Bubble[] {
       text: f.text,
       at: iso(inheritedAt + f.day * gapMs + position),
       dayLabel: `引継から ${f.day} 日`,
-      byAgent,
+      byAgent: false,
+      unknown: true,
     }));
+
+  /*
+   * 「相手は本人ですか？」
+   *
+   * 訊けば少し置いて「はい、本人です」と返る。**それだけ。**検証はできないし、
+   * 答えの真偽は内部でも決めない。
+   */
+  const checks: Bubble[] = (thread.checks ?? []).flatMap((askedAt, index) => {
+    const asked = new Date(askedAt).getTime();
+    const out: Bubble[] = [
+      {
+        id: `chk-q-${thread.id}-${index}`,
+        side: 'right',
+        text: CHECK_QUESTION,
+        at: iso(asked),
+        dayLabel: `引継から ${Math.max(0, Math.floor((asked - inheritedAt) / gapMs))} 日`,
+        byAgent: false,
+      },
+    ];
+    if (asked + CHECK_REPLY_MS <= nowMs) {
+      out.push({
+        id: `chk-a-${thread.id}-${index}`,
+        side: 'left',
+        text: CHECK_ANSWER,
+        at: iso(asked + CHECK_REPLY_MS),
+        dayLabel: `引継から ${Math.max(0, Math.floor((asked - inheritedAt) / gapMs))} 日`,
+        byAgent: false,
+        unknown: true,
+      });
+    }
+    return out;
+  });
 
   const mine: Bubble[] = thread.sent.map((sent) => ({
     id: sent.id,
@@ -358,12 +449,29 @@ function proxyBubbles(thread: Thread, now: Date): Bubble[] {
     at: sent.at,
     dayLabel: `引継から ${Math.max(0, Math.floor((new Date(sent.at).getTime() - inheritedAt) / gapMs))} 日`,
     byAgent: sent.byAgent,
+    ...(sent.draft ? { draft: true } : {}),
+    ...(sent.slips && sent.slips.length > 0 ? { slips: sent.slips } : {}),
   }));
 
-  const after = [...human, ...mine].sort((a, b) => (a.at < b.at ? -1 : 1));
+  const after = [...human, ...mine, ...checks].sort((a, b) => (a.at < b.at ? -1 : 1));
   if (after[0]) after[0] = { ...after[0], divider: 'ここから自分で返事をします' };
-  return [...out, ...after];
+
+  /*
+   * 差し戻し。
+   *
+   * 自分で書いていたぶんはそのまま残り、その下に仕切りが一枚入って、代理が
+   * 続きを打ち始める。**近さは戻らない。**
+   */
+  const returned = returnedPosts(thread, now).shown;
+  if (returned[0]) returned[0] = { ...returned[0], divider: 'ここから代理に戻します' };
+  return [...out, ...after, ...returned];
 }
+
+/** 「相手は本人ですか？」と、その答え。答えはいつも同じで、確かめようがない。 */
+export const CHECK_QUESTION = '本人ですか？';
+export const CHECK_ANSWER = 'はい、本人です';
+/** 訊いてから答えが返るまで。即答すると、読んでいないように見える。 */
+export const CHECK_REPLY_MS = 1_800;
 
 function callsOf(thread: Thread): string {
   return thread.seed ? thread.seed.callsOf(thread.title) : thread.title;

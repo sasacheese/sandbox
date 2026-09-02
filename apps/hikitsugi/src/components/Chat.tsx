@@ -1,9 +1,11 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { SOURCE_LABEL } from '../lib/pools.ts';
 import { effectiveCloseness } from '../lib/closeness.ts';
+import { DRAFT_LABEL } from '../lib/draft.ts';
 import { clockTime, closenessLabel } from '../lib/format.ts';
 import { bubblesOf, daysSinceInherit, isHeld, isReady, nextPost, storyDay } from '../lib/threads.ts';
-import type { AskAnswer, Bubble, Thread } from '../lib/types.ts';
+import { FEEL_LABEL } from '../lib/agent.ts';
+import type { AskAnswer, Bubble, FeelingAnswer, Thread } from '../lib/types.ts';
 import { useStore } from '../store.tsx';
 import { Avatar } from './Avatar.tsx';
 
@@ -20,8 +22,10 @@ import { Avatar } from './Avatar.tsx';
  *   引き継いだトーク　：打てる。隣に「代理人に任せる」が付く
  */
 export function Chat({ thread, onBack, onOpenHandover }: { thread: Thread; onBack: () => void; onOpenHandover: () => void }) {
-  const { now, send, delegate, markRead, answerAsk, handoverFor, tellAgent, own } = useStore();
+  const { now, send, draftFor, delegate, markRead, checkHuman, revert, answerAsk, answerFeeling, handoverFor, tellAgent, own } = useStore();
   const [draft, setDraft] = useState('');
+  const [reverting, setReverting] = useState(false);
+  const suggestion = draftFor(thread.id);
   /*
    * 出どころの表示。**既定では隠してある。**
    *
@@ -36,7 +40,8 @@ export function Chat({ thread, onBack, onOpenHandover }: { thread: Thread; onBac
   const inherited = thread.decision === 'inherit';
   const ready = isReady(thread, now);
   const base = handover?.closeness ?? 0;
-  const closeness = inherited ? effectiveCloseness(base, thread.delta, daysSinceInherit(thread, now)) : base;
+  // 差し戻したあとも、下がったぶんはそのまま（戻した時点で止まる）
+  const closeness = inherited || thread.decision === 'returned' ? effectiveCloseness(base, thread.delta, daysSinceInherit(thread, now)) : base;
 
   /*
    * 次の一通が来る直前の「…」。
@@ -83,9 +88,9 @@ export function Chat({ thread, onBack, onOpenHandover }: { thread: Thread; onBac
               : thread.kind === 'plain' && !inherited
               ? '自分のトーク'
               : inherited
-                ? thread.theirs === 'agent_only'
-                  ? '相手側は代理が返事をしています'
-                  : '引き継ぎ済み'
+                ? '引き継ぎ済み'
+                : thread.decision === 'returned'
+                  ? '代理に戻しました'
                 : `代理がやり取り中 · ${ready ? (thread.days ?? 0) : Math.min(storyDay(thread, now), thread.days ?? 0)} / ${thread.days} 日`}
           </div>
         </div>
@@ -112,6 +117,50 @@ export function Chat({ thread, onBack, onOpenHandover }: { thread: Thread; onBac
             このトークの過去ログ {thread.history.length} 通（〜{new Date(thread.history.at(-1)?.at ?? 0).toLocaleDateString('ja-JP')}）
           </span>
           <span className="knowledge__note">これより後のことは知りません。</span>
+        </div>
+      ) : null}
+
+      {/*
+        引き継いだあとの象限。**あなたは人間。相手は分からない。**
+        訊けば「はい、本人です」と返る。それだけで、確かめようはない。
+      */}
+      {inherited ? (
+        <div className="quadrant">
+          <span className="quadrant__cell">
+            <span className="quadrant__key">あなた</span>
+            <span className="quadrant__value">人間</span>
+          </span>
+          <span className="quadrant__cell">
+            <span className="quadrant__key">相手</span>
+            <span className="quadrant__value quadrant__value--unknown">？</span>
+          </span>
+          <button type="button" className="quadrant__ask" onClick={() => void checkHuman(thread.id)}>
+            相手は本人ですか？
+          </button>
+          {/* 差し戻し。押すと一度だけ確かめて、それから代理に返す。近さは戻らない */}
+          <button type="button" className="quadrant__ask" onClick={() => setReverting(true)}>
+            やっぱり代理に戻す
+          </button>
+          {reverting ? (
+            <div className="revert">
+              <span className="revert__text">代理タブへ戻り、代理が続きを打ちます。自分で書いたぶんは残ります。近さは戻りません。</span>
+              <div className="revert__btns">
+                <button
+                  type="button"
+                  className="opt opt--on"
+                  onClick={() => {
+                    setReverting(false);
+                    void revert(thread.id);
+                  }}
+                >
+                  戻す
+                </button>
+                <button type="button" className="opt" onClick={() => setReverting(false)}>
+                  やめる
+                </button>
+              </div>
+            </div>
+          ) : null}
         </div>
       ) : null}
 
@@ -149,12 +198,15 @@ export function Chat({ thread, onBack, onOpenHandover }: { thread: Thread; onBac
               key={bubble.id}
               bubble={bubble}
               showLabel={newLabel}
-              showAgentMark={inherited}
+              showAgentMark={inherited || thread.decision === 'returned'}
               fresh={isFresh(bubble.at)}
               showSource={sources}
               onAnswer={(answer) => {
                 // 代理とのトークに出した確認は、相手のトークの札と同じもの
                 if (bubble.ask) void answerAsk(bubble.ask.threadId ?? thread.id, bubble.ask.id, answer);
+              }}
+              onFeel={(answer) => {
+                if (bubble.poll) void answerFeeling(bubble.poll.threadId, answer);
               }}
             />
           );
@@ -183,6 +235,17 @@ export function Chat({ thread, onBack, onOpenHandover }: { thread: Thread; onBac
 
       {inherited || thread.kind === 'plain' || thread.kind === 'agent' ? (
         <div className="composer">
+          {/*
+            代理の下書き。**代理ならこう打った**を、入力欄の上にグレーで置く。
+            触れば入力欄に入る。無視して自分で打ってもいい——下書きで送れば近さは
+            保たれ、自分で打てば下がる。
+          */}
+          {suggestion && draft.trim() !== suggestion ? (
+            <button type="button" className="draftrow" onClick={() => setDraft(suggestion)}>
+              <span className="draftrow__key">{DRAFT_LABEL}</span>
+              <span className="draftrow__text">{suggestion}</span>
+            </button>
+          ) : null}
           <textarea
             className="composer__input"
             value={draft}
@@ -208,7 +271,8 @@ export function Chat({ thread, onBack, onOpenHandover }: { thread: Thread; onBac
             aria-label="送信"
             onClick={() => {
               if (thread.kind === 'agent') void tellAgent(draft);
-              else void send(thread.id, draft);
+              // 下書きをそのまま送ったかどうかは、文が一致するかで見る
+              else void send(thread.id, draft, { draft: suggestion !== null && draft.trim() === suggestion });
               setDraft('');
             }}
           >
@@ -222,6 +286,8 @@ export function Chat({ thread, onBack, onOpenHandover }: { thread: Thread; onBac
               ? 'このトークは終わりにしました。'
               : thread.decision === 'agent_only'
                 ? '代理だけが続けています。あなたは入っていません。'
+                : thread.decision === 'returned'
+                  ? '代理に戻しました。代理が続きを打っています。近さは戻りません。'
                 : ready
                   ? 'やり取りが終わりました。引継書を読めます。'
                   : '代理がやり取りしています。ここには書き込めません。'}
@@ -250,6 +316,7 @@ function Turn({
   fresh,
   showSource,
   onAnswer,
+  onFeel,
 }: {
   bubble: Bubble;
   showLabel: boolean;
@@ -257,6 +324,7 @@ function Turn({
   fresh: boolean;
   showSource: boolean;
   onAnswer: (answer: AskAnswer) => void;
+  onFeel: (answer: FeelingAnswer) => void;
 }) {
   // 開示。法律で決まっているので、必ず最初に立つ
   if (bubble.system) return <div className="sysline">{bubble.system}</div>;
@@ -267,15 +335,28 @@ function Turn({
       {showLabel ? <div className="daystamp">{bubble.dayLabel}</div> : null}
       {bubble.divider ? <div className="divider">{bubble.divider}</div> : null}
       {bubble.ask ? <Ask ask={bubble.ask} fresh={fresh} casual={bubble.ask.threadId !== undefined} onAnswer={onAnswer} /> : null}
-      {bubble.ask ? null : (
+      {bubble.poll ? <Poll text={bubble.text} answered={bubble.poll.answered} fresh={fresh} onAnswer={onFeel} /> : null}
+      {bubble.ask || bubble.poll ? null : (
       <div className={`bubblerow bubblerow--${bubble.side}${fresh ? ' bubblerow--fresh' : ''}`}>
-        <div className={`bubble${bubble.byAgent ? ' bubble--agent' : ''}`}>{bubble.text}</div>
+        {/* 相手側が人間か代理か分からない一通は、白でも薄藍でもない色にする */}
+        <div className={`bubble${bubble.byAgent ? ' bubble--agent' : ''}${bubble.unknown ? ' bubble--unknown' : ''}`}>{bubble.text}</div>
         <div className="bubble__meta">
-          {bubble.byAgent && showAgentMark ? <span className="agentmark">代</span> : null}
+          {/* 下書きをそのまま送ったものにも「代」が付く。打ったのはあなた、書いたのは代理 */}
+          {(bubble.byAgent || bubble.draft) && showAgentMark ? <span className="agentmark">代</span> : null}
           <span className="bubble__time">{clockTime(bubble.at)}</span>
         </div>
       </div>
       )}
+      {bubble.slips && bubble.slips.length > 0 ? (
+        <div className="slips">
+          {bubble.slips.map((slip) => (
+            <div className="slip" key={slip.label}>
+              <span className="slip__label">{slip.label}</span>
+              <span className="slip__detail">{slip.detail}</span>
+            </div>
+          ))}
+        </div>
+      ) : null}
       {showSource && bubble.source && !bubble.ask ? (
         <div className={`srcrow srcrow--${bubble.side}`}>
           <span className={`src src--${bubble.source}`}>{SOURCE_LABEL[bubble.source]}</span>
@@ -328,6 +409,41 @@ function Ask({
           <button type="button" className="opt" onClick={() => onAnswer('guess')}>
             代理にまかせる
           </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * 「引き継げた感じ、する？」
+ *
+ * 代理とのトークにだけ出る。三つのうちどれを選んでも代理は「そう」と言う。
+ * **作品は判定を持たない。**答えだけが残って、設定の記録から見返せる。
+ */
+function Poll({
+  text,
+  answered,
+  fresh,
+  onAnswer,
+}: {
+  text: string;
+  answered: FeelingAnswer | undefined;
+  fresh: boolean;
+  onAnswer: (answer: FeelingAnswer) => void;
+}) {
+  return (
+    <div className={`askcard askcard--casual${fresh ? ' askcard--fresh' : ''}`}>
+      <p className="askcard__text">{text}</p>
+      {answered ? (
+        <div className="askcard__done">「{FEEL_LABEL[answered]}」と答えました</div>
+      ) : (
+        <div className="askcard__btns">
+          {(['yes', 'notyet', 'unsure'] as const).map((answer) => (
+            <button type="button" className="opt" key={answer} onClick={() => onAnswer(answer)}>
+              {FEEL_LABEL[answer]}
+            </button>
+          ))}
         </div>
       )}
     </div>

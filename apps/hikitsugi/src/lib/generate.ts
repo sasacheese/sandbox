@@ -10,17 +10,20 @@
  */
 
 import { closenessOf as closenessBase } from './closeness.ts';
-import { loopAt, plansAt, type Plan } from './loop.ts';
+import { loopAt, plans, type Plan } from './loop.ts';
 import { AUTO_REPLIES, COUNTERPARTS, NOTES, SCRIPT_SCALE, type CounterpartSeed, type Source } from './pools.ts';
-import { SAYS } from './agent.ts';
+import { callOf, FEEL_AFTER_SENT, SAYS } from './agent.ts';
+import type { Manner } from './slips.ts';
 import { askGraceMs, bubblesOf, DEFAULT_GAP_MS, isReady } from './threads.ts';
-import { digestOf, habitsOf, type Message, type Transcript } from './transcript.ts';
+import { digestOf, habitsOf, toneOf, type Message, type Transcript } from './transcript.ts';
 import {
   isoTime,
   type Belief,
   type Bubble,
+  type Feeling,
   type Handover,
   type Intake,
+  type IsoTime,
   type TheirDecision,
   type Thread,
   type ThreadState,
@@ -94,15 +97,29 @@ export function buildPlainThreads(transcripts: readonly Transcript[], loopStart:
 /** 止めているあいだの記録。相手の名前で引く。 */
 export type Holds = Record<string, { since: number | null; total: number }>;
 
+/**
+ * 引き継いだ状態から始めた印。相手の id で引く。
+ *
+ * 設定のデモ用設定から使う治具。引き継いだ後を一回試すのに一周待たなくて
+ * よいようにするためのもので、跳んだ時刻を持つ。一周が終わると消える。
+ */
+export type Jumps = Record<string, IsoTime>;
+
 export function buildProxyThread(
   plan: Plan,
   loopIndex: number,
   loopStart: number,
   history: readonly Message[],
   hold?: Holds[string],
+  jumpedAt?: IsoTime,
 ): Thread {
   const rand = seeded(`${plan.seed.id}#${loopIndex}`);
-  const createdAt = new Date(loopStart + plan.appearsAt);
+  /*
+   * 跳んだトークは、跳んだ瞬間に出し切っているように現れた時刻を遡らせる。
+   * 相手側の判断は決めない（**未確定**）——引継書を通らずに引き継いだので、
+   * 相手が何を選んだかを見る機会が無い。
+   */
+  const createdAt = jumpedAt ? new Date(new Date(jumpedAt).getTime() - plan.posts * plan.gapMs) : new Date(loopStart + plan.appearsAt);
   return {
     id: `proxy-${plan.seed.id}`,
     kind: 'proxy' as const,
@@ -116,7 +133,7 @@ export function buildProxyThread(
     gapMs: plan.gapMs,
     posts: plan.posts,
     history: [...history],
-    theirs: theirDecisionOf(rand),
+    ...(jumpedAt ? {} : { theirs: theirDecisionOf(rand) }),
     serial: serialOf(createdAt, rand),
     delta: 0,
     sent: [],
@@ -137,13 +154,16 @@ export function buildProxyThreads(
   loopMs: number,
   seeds: readonly CounterpartSeed[] = COUNTERPARTS,
   holds: Holds = {},
+  jumps: Jumps = {},
 ): Thread[] {
   const { index, phase } = loopAt(now, startedAt, loopMs);
   const loopStart = startedAt + index * loopMs;
-  return plansAt(phase, loopMs, seeds)
+  // 跳んだ相手は、まだ現れる番でなくても出す
+  const due = plans(loopMs, seeds).filter((plan) => plan.appearsAt <= phase || jumps[plan.seed.id]);
+  return due
     .map((plan) => {
       const transcript = transcripts.find((t) => t.name === plan.seed.name);
-      return transcript ? buildProxyThread(plan, index, loopStart, transcript.messages, holds[plan.seed.name]) : null;
+      return transcript ? buildProxyThread(plan, index, loopStart, transcript.messages, holds[plan.seed.name], jumps[plan.seed.id]) : null;
     })
     .filter((thread): thread is Thread => thread !== null);
 }
@@ -161,7 +181,13 @@ export function buildProxyThreads(
  * 確認は、相手のトークにある同じ札と一つのもの。ここで答えれば向こうも埋まる。
  * **一周が終わっても 1. は消えない**——指示は本人の意思なので、進行と一緒に流さない。
  */
-export function buildAgentThread(log: readonly Message[], loopStart: number, proxies: readonly Thread[] = [], now: Date = new Date()): Thread {
+export function buildAgentThread(
+  log: readonly Message[],
+  loopStart: number,
+  proxies: readonly Thread[] = [],
+  now: Date = new Date(),
+  feelings: readonly Feeling[] = [],
+): Thread {
   const feed: Bubble[] = log.map((message, index) => ({
     id: `a-${index}`,
     side: message.mine ? 'right' : 'left',
@@ -209,8 +235,31 @@ export function buildAgentThread(log: readonly Message[], loopStart: number, pro
     }
 
     if (isReady(thread, now) || thread.decision) {
-      const last = bubbles.at(-1);
+      // 一区切りは、台本の最後の一通の少し後。引き継いだあとの分は数えない
+      const last = [...bubbles].reverse().find((b) => !thread.inheritedAt || b.at < thread.inheritedAt);
       if (last) feed.push(say('done', new Date(new Date(last.at).getTime() + thread.gapMs).toISOString(), SAYS.done(thread.title)));
+    }
+
+    // 差し戻されたら、そのことに触れる
+    if (thread.decision === 'returned' && thread.returnedAt) {
+      feed.push(say('returned', new Date(new Date(thread.returnedAt).getTime() + 800).toISOString(), SAYS.returned(thread.title)));
+    }
+
+    /*
+     * 「引き継げた感じ、する？」
+     *
+     * 引き継いで数通やり取りしたら訊く。どれを選んでも「そう」としか言わない。
+     * **作品は判定を持たない。**答えだけが残る。
+     */
+    const asked = pollAt(thread);
+    if (asked !== null) {
+      const feeling = feelings.find((f) => f.threadId === thread.id && new Date(f.at).getTime() >= asked);
+      feed.push(
+        say('feel', new Date(asked).toISOString(), SAYS.feel(thread.title), {
+          poll: { threadId: thread.id, ...(feeling ? { answered: feeling.answer } : {}) },
+        }),
+      );
+      if (feeling) feed.push(say('felt', new Date(new Date(feeling.at).getTime() + FEEL_REPLY_MS).toISOString(), SAYS.feelReply()));
     }
   }
 
@@ -238,6 +287,16 @@ function dayOf(at: number): string {
   return new Date(at).toLocaleDateString('ja-JP', { year: 'numeric', month: 'numeric', day: 'numeric' });
 }
 
+/** 問いを出してから、答えに「そう」と返すまで。 */
+export const FEEL_REPLY_MS = 1_200;
+
+/** 「引き継げた感じ、する？」を出す時刻。まだなら null。 */
+export function pollAt(thread: Thread): number | null {
+  if ((thread.decision !== 'inherit' && thread.decision !== 'returned') || !thread.inheritedAt) return null;
+  const nth = thread.sent[FEEL_AFTER_SENT - 1];
+  return nth ? new Date(nth.at).getTime() + 2_000 : null;
+}
+
 export function buildThreads(
   now: Date,
   transcripts: readonly Transcript[],
@@ -246,11 +305,13 @@ export function buildThreads(
   seeds: readonly CounterpartSeed[] = COUNTERPARTS,
   holds: Holds = {},
   agentLog: readonly Message[] = [],
+  jumps: Jumps = {},
+  feelings: readonly Feeling[] = [],
 ): Thread[] {
   const { index } = loopAt(now, startedAt, loopMs);
   const loopStart = startedAt + index * loopMs;
-  const proxies = buildProxyThreads(now, transcripts, startedAt, loopMs, seeds, holds);
-  return [buildAgentThread(agentLog, loopStart, proxies, now), ...proxies, ...buildPlainThreads(transcripts, loopStart)];
+  const proxies = buildProxyThreads(now, transcripts, startedAt, loopMs, seeds, holds, jumps);
+  return [buildAgentThread(agentLog, loopStart, proxies, now, feelings), ...proxies, ...buildPlainThreads(transcripts, loopStart)];
 }
 
 /** 本人が触った跡を、組み立てたトークへ重ねる。 */
@@ -263,7 +324,9 @@ export function withState(thread: Thread, state: ThreadState | undefined): Threa
     delta: state.delta,
     ...(state.decision ? { decision: state.decision } : {}),
     ...(state.inheritedAt ? { inheritedAt: state.inheritedAt } : {}),
+    ...(state.returnedAt ? { returnedAt: state.returnedAt } : {}),
     ...(state.readAt ? { readAt: state.readAt } : {}),
+    ...(state.checks && state.checks.length > 0 ? { checks: state.checks } : {}),
   };
 }
 
@@ -379,12 +442,38 @@ export function buildHandover(
       conflicts: seed.tally.conflicts,
       otherAgents: 18 + Math.floor(rand() * 40),
     },
-    // 本人が代理へ言った申し送りは、注意事項の末尾に載る
+    // 本人が代理へ言った申し送りは、注意事項の末尾に載る。
+    // 相手が代理応答を使っていなければ、そのことを最初に書く
     notes: [
+      ...(seed.solo ? [SOLO_NOTE] : []),
       ...NOTES,
       ...rules.filter((r) => r.kind === 'note' && (!r.target || r.target === seed.name)).map((r) => `本人からの申し送り：「${r.text}」`),
     ],
-    theirs: thread.theirs ?? 'refuse',
+    // 相手が代理応答を使っていなければ、相手側に判断は無い。人間がそのまま続ける
+    theirs: seed.solo ? 'inherit' : thread.theirs ?? 'refuse',
+    ...(seed.solo ? { solo: true } : {}),
+  };
+}
+
+/** 相手が代理応答を使っていない相手の引継書に、最初に載る一行。 */
+export const SOLO_NOTE =
+  '相手は代理応答を使っていません。このトークが自動応答であることは最初に表示されましたが、相手はそれに触れていません。相手は、代理と話していたことを知りません。';
+
+/**
+ * 引継書の作法。自分で打った文を照らす材料。
+ *
+ * **引継書がすでに持っているものだけ。**呼び方は代理が使っていた形、句点と
+ * 長さと返信の速さは過去ログの集計、触れてはいけないことは台本のもの。
+ */
+export function mannerOf(thread: Thread, transcript: Transcript | undefined, intake: Intake): Manner | null {
+  const seed = thread.seed;
+  if (!seed) return null;
+  return {
+    address: callOf(thread.title),
+    name: thread.title,
+    calls: seed.callsOf(intake.name),
+    avoid: seed.avoid,
+    tone: transcript ? toneOf(transcript) : null,
   };
 }
 

@@ -97,6 +97,13 @@ export type CounterpartSeed = {
   slot?: { at: number; days: number; gap: number };
   /** 取り込んだ履歴から生成したもの。 */
   generated?: boolean;
+  /**
+   * 相手が代理応答を使っていない相手への、片側だけの代理。
+   *
+   * 相手側は人間なので、返ってくるのは人間の返事（白）。開示のシステム行は
+   * 出るが、相手はそれに触れない。**相手は、代理と話していたことを知らない。**
+   */
+  solo?: boolean;
   /** 一覧と会話の見出しに出る短い接点。 */
   short: string;
   /** 引継書に出る接点の詳細。 */
@@ -854,6 +861,54 @@ export function followUpsByAgent(calls: string, joke: string): readonly FollowUp
     { day: 2, text: '前回の話の続きは、こちらで預かっています。いつでも戻れます。' },
     { day: 5, text: '返信は急がなくて大丈夫です。何日でも待てます。' },
     { day: 9, text: 'あなたの言い方が変わったことは、記録していません。安心してください。' },
+  ];
+}
+
+/**
+ * 相手側の判断が決まっていないとき（治具で引き継いだ状態から始めたとき）。
+ *
+ * 人間のようにも代理のようにも読める言葉だけを置く。**どちらとも言わない。**
+ */
+export function followUpsUnknown(calls: string, joke: string): readonly FollowUp[] {
+  return [
+    { day: 0, text: `${calls}、やっと話せますね。` },
+    { day: 1, text: `${joke}。`, kind: 'joke' },
+    { day: 3, text: 'この前の続き、まだ聞いていないです。' },
+    { day: 6, text: '返信は急がなくて大丈夫です。' },
+    { day: 11, text: '前と少し感じが変わりましたね。悪い意味ではなく。' },
+  ];
+}
+
+/**
+ * 相手が代理応答を使っていない相手を引き継いだあと、届く言葉。
+ *
+ * 相手は「本人と話せる」とは言わない——**ずっと本人だと思っていた。**
+ */
+export function followUpsSolo(calls: string, joke: string): readonly FollowUp[] {
+  return [
+    { day: 0, text: `${calls}、返事ありがとう。` },
+    { day: 1, text: `${joke}。`, kind: 'joke' },
+    { day: 3, text: 'この前の続き、まだ聞いてないです。' },
+    { day: 6, text: '急がなくていいですよ。' },
+    { day: 11, text: '前と少し感じが違いますね。悪い意味じゃなく。' },
+  ];
+}
+
+/**
+ * 差し戻したあと、代理が続けるやり取り。
+ *
+ * 最初の一通で、代理は戻されたことに触れる——ただし相手には「本人が書いていた」
+ * とは言わない（代理はあなたのフリをしている）。**書き方が揺れていた、と言うだけ。**
+ * 相手側の言葉は、人間にも代理にも読めるものだけ。
+ */
+export function afterReturn(joke: string): readonly { side: 'yours' | 'theirs'; text: string }[] {
+  return [
+    { side: 'yours', text: '少し、書き方が揺れていたと思います。ここからは、また元のように書きます。' },
+    { side: 'theirs', text: 'そうですか。どちらでも構いません。' },
+    { side: 'yours', text: `${joke}。` },
+    { side: 'theirs', text: 'それは、変わっていませんね。' },
+    { side: 'yours', text: '続きを聞かせてください。急がなくていいです。' },
+    { side: 'theirs', text: 'では、ゆっくり。' },
   ];
 }
 

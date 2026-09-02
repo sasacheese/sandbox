@@ -35,7 +35,12 @@ export function Friends({ onOpen }: { onOpen: (threadId: string) => void }) {
   const people = [...byName.values()];
 
   const groups: { key: string; title: string; people: Thread[] }[] = [
-    { key: 'building', title: '代理がやり取り中', people: people.filter((t) => t.kind === 'proxy' && !t.decision && !isReady(t, now)) },
+    {
+      key: 'building',
+      title: '代理がやり取り中',
+      // 差し戻した相手も、代理が続けているのでここ
+      people: people.filter((t) => t.kind === 'proxy' && ((!t.decision && !isReady(t, now)) || t.decision === 'returned')),
+    },
     { key: 'ready', title: '引き継げます', people: people.filter((t) => t.kind === 'proxy' && !t.decision && isReady(t, now)) },
     { key: 'inherited', title: '引き継いだ', people: people.filter((t) => t.decision === 'inherit') },
     { key: 'idle', title: '友だち', people: people.filter((t) => t.kind === 'plain' && !t.decision) },
@@ -145,7 +150,7 @@ function Count({ value }: { value: number }) {
 }
 
 function Friend({ thread, onOpen }: { thread: Thread; onOpen: (threadId: string) => void }) {
-  const { now, handoverFor, seeds, lab, api, generating, generateFor } = useStore();
+  const { now, handoverFor, seeds, lab, api, generating, generateFor, settings, sendProxyTo } = useStore();
   const handover = thread.kind === 'proxy' ? handoverFor(thread.id) : null;
   const days = thread.days ?? 0;
   const elapsed = Math.min(storyDay(thread, now), days);
@@ -184,7 +189,19 @@ function Friend({ thread, onOpen }: { thread: Thread; onOpen: (threadId: string)
           </div>
         ) : null}
         {thread.kind === 'plain' && !thread.decision && !registered && lab ? (
-          api.key ? (
+          settings.openToAll ? (
+            // 設定で解禁したとき。相手は人間なので、返ってくるのは人間の返事
+            <button
+              type="button"
+              className="friend__make"
+              onClick={(e) => {
+                e.stopPropagation();
+                void sendProxyTo(thread.title);
+              }}
+            >
+              この人に代理を送る（相手は代理応答を使っていません）
+            </button>
+          ) : api.key ? (
             <button
               type="button"
               className="friend__make"
@@ -208,6 +225,7 @@ function Friend({ thread, onOpen }: { thread: Thread; onOpen: (threadId: string)
 function State({ thread, registered }: { thread: Thread; registered: boolean }) {
   const { now, lab } = useStore();
   if (thread.decision === 'inherit') return <span className="chip-state">自分で返信</span>;
+  if (thread.decision === 'returned') return <span className="chip-state chip-state--proxy">代理に戻した</span>;
   if (thread.decision === 'agent_only') return <span className="chip-state chip-state--closed">代理が続けています</span>;
   if (thread.decision === 'end') return <span className="chip-state chip-state--closed">終わり</span>;
   if (thread.kind === 'plain') {

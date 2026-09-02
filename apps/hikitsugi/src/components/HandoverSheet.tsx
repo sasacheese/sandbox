@@ -79,6 +79,13 @@ export function HandoverSheet({ threadId, onClose }: { threadId: string; onClose
                 <span className="kv__key">本人同士の連絡なし</span>
                 <span className="kv__value">{quietLabel(handover.quietDays)}</span>
               </div>
+              {/* 相手が代理応答を使っていない相手。**相手は、代理と話していたことを知らない** */}
+              {handover.solo ? (
+                <div className="kv">
+                  <span className="kv__key">相手側</span>
+                  <span className="kv__value">代理応答を使っていません。代理と話していたことを知りません</span>
+                </div>
+              ) : null}
               <div className="kv">
                 <span className="kv__key">やり取りした期間</span>
                 <span className="kv__value" style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
@@ -310,7 +317,7 @@ function ResultSheet({ handover, decision, onClose }: { handover: Handover; deci
               </div>
               <div className="kv">
                 <span className="kv__key">相手の判断</span>
-                <span className="kv__value">{THEIR_LABEL[handover.theirs]}</span>
+                <span className="kv__value">{handover.solo ? '相手は代理応答を使っていません。判断はありません' : THEIR_LABEL[handover.theirs]}</span>
               </div>
             </div>
           </section>
@@ -327,8 +334,9 @@ function ResultSheet({ handover, decision, onClose }: { handover: Handover; deci
                 </div>
               </div>
               <p className="sub">
-                両方が引き継ぎました。以後、このやり取りは人間同士のものになります。本人同士が連絡していなかったのは
-                {quietLabel(handover.quietDays)}でした。
+                {handover.solo
+                  ? `以後、このやり取りは人間同士のものになります。相手は、これまでも人間同士だったと思っています。本人同士が連絡していなかったのは${quietLabel(handover.quietDays)}でした。`
+                  : `両方が引き継ぎました。以後、このやり取りは人間同士のものになります。本人同士が連絡していなかったのは${quietLabel(handover.quietDays)}でした。`}
               </p>
             </section>
           ) : null}
