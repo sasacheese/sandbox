@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { bubblesOf, daysSinceInherit, isReady, pendingAsksOf, postsShown, previewOf, storyDay, unreadOf } from './threads.ts';
+import { bubblesOf, CHECK_ANSWER, CHECK_QUESTION, CHECK_REPLY_MS, daysSinceInherit, isReady, pendingAsksOf, postsShown, previewOf, storyDay, unreadOf } from './threads.ts';
 import { buildPlainThreads, buildProxyThread } from './generate.ts';
 import { DEFAULT_LOOP_MS, plans, type Plan } from './loop.ts';
 import { SAMPLE_TRANSCRIPTS } from './sample.ts';
@@ -180,7 +180,12 @@ test('引き継ぐと、仕切りのあとに人間の区間が続く', () => {
   assert.equal(mine.side, 'right');
 });
 
-test('相手が代理に任せた場合、引き継いだあとの相手の発言に代理人の印が付く', () => {
+test('相手が代理に任せた場合でも、引き継いだあとの相手の発言に印は付かない', () => {
+  /*
+   * 以前は相手側の代理の発言に「代」の印が付いていた。いまは付けない——
+   * **相手が人間か代理かは、トークの中では確かめられない**ことにしたため。
+   * 届く言葉は違うが、色と印は同じ。
+   */
   const at = appears('sugano');
   const base = { decision: 'inherit' as const, inheritedAt: isoTime(at) };
   const human = proxy('sugano', { ...base, theirs: 'inherit' });
@@ -188,8 +193,13 @@ test('相手が代理に任せた場合、引き継いだあとの相手の発�
   const later = new Date(at.getTime() + 3 * human.gapMs);
   const left = (t: Thread) => bubblesOf(t, later).filter((b) => b.side === 'left' && b.id.startsWith('f-'));
   assert.ok(left(human).length > 0);
-  assert.ok(left(human).every((b) => !b.byAgent));
-  assert.ok(left(agent).every((b) => b.byAgent));
+  assert.ok(left(human).every((b) => !b.byAgent && b.unknown));
+  assert.ok(left(agent).every((b) => !b.byAgent && b.unknown));
+  // 言葉は違う
+  assert.notDeepEqual(
+    left(human).map((b) => b.text),
+    left(agent).map((b) => b.text),
+  );
 });
 
 test('自分のトークは止まっていて、送ると一度だけ返事が来る', () => {
@@ -292,4 +302,34 @@ test('自分のトークは、取り込んだ履歴がそのまま出る', () =>
   assert.equal(bubbles[0]?.text, historyOf('桜井 まりえ')[0]?.text);
   // 代理は一言も混ざらない
   assert.ok(bubbles.every((b) => !b.byAgent));
+});
+
+test('引き継いだあとの相手側は、人間か代理か分からない色になる', () => {
+  const at = appears('sugano');
+  const inheritedAt = new Date(at.getTime() + 60_000);
+  for (const theirs of ['inherit', 'agent_only', 'refuse', undefined] as const) {
+    const thread = proxy('sugano', { decision: 'inherit', inheritedAt: isoTime(inheritedAt), ...(theirs ? { theirs } : {}) });
+    const later = new Date(inheritedAt.getTime() + 2 * thread.gapMs);
+    const after = bubblesOf(thread, later).filter((b) => b.at >= thread.inheritedAt! && b.side === 'left');
+    assert.ok(after.length >= 2, `相手から届いていない（${theirs}）`);
+    // 相手側の判断がどうであれ、吹き出しには出ない
+    assert.ok(after.every((b) => b.unknown === true && b.byAgent === false), `相手側の正体が吹き出しに出ている（${theirs}）`);
+  }
+});
+
+test('「本人ですか？」と訊くと、少し置いて「はい、本人です」とだけ返る', () => {
+  const at = appears('sugano');
+  const inheritedAt = new Date(at.getTime() + 60_000);
+  const asked = new Date(inheritedAt.getTime() + 5_000);
+  const thread = proxy('sugano', { decision: 'inherit', inheritedAt: isoTime(inheritedAt), theirs: 'agent_only', checks: [isoTime(asked)] });
+  const soon = bubblesOf(thread, new Date(asked.getTime() + 500));
+  assert.ok(soon.some((b) => b.id.startsWith('chk-q-') && b.text === CHECK_QUESTION && b.side === 'right'));
+  assert.ok(!soon.some((b) => b.id.startsWith('chk-a-')), '即答している');
+  const later = bubblesOf(thread, new Date(asked.getTime() + CHECK_REPLY_MS + 100));
+  const answer = later.find((b) => b.id.startsWith('chk-a-'));
+  assert.ok(answer);
+  assert.equal(answer.text, CHECK_ANSWER);
+  // 相手が代理でも、答えは同じで、色も分からないまま
+  assert.equal(answer.unknown, true);
+  assert.equal(answer.byAgent, false);
 });

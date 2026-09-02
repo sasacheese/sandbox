@@ -284,6 +284,7 @@ export function withState(thread: Thread, state: ThreadState | undefined): Threa
     ...(state.decision ? { decision: state.decision } : {}),
     ...(state.inheritedAt ? { inheritedAt: state.inheritedAt } : {}),
     ...(state.readAt ? { readAt: state.readAt } : {}),
+    ...(state.checks && state.checks.length > 0 ? { checks: state.checks } : {}),
   };
 }
 

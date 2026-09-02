@@ -2610,3 +2610,67 @@ p {
 .slip__detail {
   font-variant-numeric: tabular-nums;
 }
+
+/* ================================================================= 引き継いだあとの相手側 */
+
+/*
+ * 人間か代理か分からない一通。
+ *
+ * 白（人間）でも薄藍（代理）でもない、地に近い灰。**色は「誰が打ったか」を
+ * 言う**という規則のなかで、分からないものには分からない色を当てる。
+ */
+.bubblerow--left .bubble--unknown {
+  background: var(--field);
+  color: var(--ink);
+  border: 1px solid var(--rule);
+  box-shadow: none;
+}
+
+/* 象限。あなたは人間、相手は？ */
+.quadrant {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  padding: 9px var(--pad);
+  background: var(--paper);
+  border-bottom: 1px solid var(--rule);
+  font-size: 12.5px;
+}
+
+.quadrant__cell {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.quadrant__key {
+  font-family: var(--mono);
+  font-size: 9.5px;
+  letter-spacing: 0.12em;
+  color: var(--faint);
+}
+
+.quadrant__value {
+  color: var(--ink-dim);
+  font-weight: 600;
+}
+
+.quadrant__value--unknown {
+  color: var(--ink);
+  font-size: 14px;
+}
+
+.quadrant__ask {
+  margin-left: auto;
+  padding: 5px 11px;
+  border: 1px solid var(--rule-strong);
+  border-radius: 999px;
+  background: none;
+  color: var(--muted);
+  font-size: 11.5px;
+  white-space: nowrap;
+}
+
+.quadrant__ask:active {
+  background: var(--field);
+}

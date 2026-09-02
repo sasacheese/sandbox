@@ -21,7 +21,7 @@ import { Avatar } from './Avatar.tsx';
  *   引き継いだトーク　：打てる。隣に「代理人に任せる」が付く
  */
 export function Chat({ thread, onBack, onOpenHandover }: { thread: Thread; onBack: () => void; onOpenHandover: () => void }) {
-  const { now, send, draftFor, delegate, markRead, answerAsk, handoverFor, tellAgent, own } = useStore();
+  const { now, send, draftFor, delegate, markRead, checkHuman, answerAsk, handoverFor, tellAgent, own } = useStore();
   const [draft, setDraft] = useState('');
   const suggestion = draftFor(thread.id);
   /*
@@ -85,9 +85,7 @@ export function Chat({ thread, onBack, onOpenHandover }: { thread: Thread; onBac
               : thread.kind === 'plain' && !inherited
               ? '自分のトーク'
               : inherited
-                ? thread.theirs === 'agent_only'
-                  ? '相手側は代理が返事をしています'
-                  : '引き継ぎ済み'
+                ? '引き継ぎ済み'
                 : `代理がやり取り中 · ${ready ? (thread.days ?? 0) : Math.min(storyDay(thread, now), thread.days ?? 0)} / ${thread.days} 日`}
           </div>
         </div>
@@ -114,6 +112,26 @@ export function Chat({ thread, onBack, onOpenHandover }: { thread: Thread; onBac
             このトークの過去ログ {thread.history.length} 通（〜{new Date(thread.history.at(-1)?.at ?? 0).toLocaleDateString('ja-JP')}）
           </span>
           <span className="knowledge__note">これより後のことは知りません。</span>
+        </div>
+      ) : null}
+
+      {/*
+        引き継いだあとの象限。**あなたは人間。相手は分からない。**
+        訊けば「はい、本人です」と返る。それだけで、確かめようはない。
+      */}
+      {inherited ? (
+        <div className="quadrant">
+          <span className="quadrant__cell">
+            <span className="quadrant__key">あなた</span>
+            <span className="quadrant__value">人間</span>
+          </span>
+          <span className="quadrant__cell">
+            <span className="quadrant__key">相手</span>
+            <span className="quadrant__value quadrant__value--unknown">？</span>
+          </span>
+          <button type="button" className="quadrant__ask" onClick={() => void checkHuman(thread.id)}>
+            相手は本人ですか？
+          </button>
         </div>
       ) : null}
 
@@ -283,7 +301,8 @@ function Turn({
       {bubble.ask ? <Ask ask={bubble.ask} fresh={fresh} casual={bubble.ask.threadId !== undefined} onAnswer={onAnswer} /> : null}
       {bubble.ask ? null : (
       <div className={`bubblerow bubblerow--${bubble.side}${fresh ? ' bubblerow--fresh' : ''}`}>
-        <div className={`bubble${bubble.byAgent ? ' bubble--agent' : ''}`}>{bubble.text}</div>
+        {/* 相手側が人間か代理か分からない一通は、白でも薄藍でもない色にする */}
+        <div className={`bubble${bubble.byAgent ? ' bubble--agent' : ''}${bubble.unknown ? ' bubble--unknown' : ''}`}>{bubble.text}</div>
         <div className="bubble__meta">
           {/* 下書きをそのまま送ったものにも「代」が付く。打ったのはあなた、書いたのは代理 */}
           {(bubble.byAgent || bubble.draft) && showAgentMark ? <span className="agentmark">代</span> : null}

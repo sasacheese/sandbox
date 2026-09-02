@@ -857,6 +857,21 @@ export function followUpsByAgent(calls: string, joke: string): readonly FollowUp
   ];
 }
 
+/**
+ * 相手側の判断が決まっていないとき（治具で引き継いだ状態から始めたとき）。
+ *
+ * 人間のようにも代理のようにも読める言葉だけを置く。**どちらとも言わない。**
+ */
+export function followUpsUnknown(calls: string, joke: string): readonly FollowUp[] {
+  return [
+    { day: 0, text: `${calls}、やっと話せますね。` },
+    { day: 1, text: `${joke}。`, kind: 'joke' },
+    { day: 3, text: 'この前の続き、まだ聞いていないです。' },
+    { day: 6, text: '返信は急がなくて大丈夫です。' },
+    { day: 11, text: '前と少し感じが変わりましたね。悪い意味ではなく。' },
+  ];
+}
+
 /** 代理人に任せた返信の文面。本人が書くより、いつも少し上手い。 */
 export const AGENT_REPLIES: readonly string[] = [
   'こちらは変わりません。続きを聞かせてください。',

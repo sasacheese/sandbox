@@ -124,6 +124,8 @@ export type Store = {
   draftFor: (threadId: string) => string | null;
   delegate: (threadId: string) => Promise<void>;
   markRead: (threadId: string) => Promise<void>;
+  /** 「相手は本人ですか？」と訊く。「はい、本人です」と返る。**検証はできない。** */
+  checkHuman: (threadId: string) => Promise<void>;
   /** 代理人からの確認に答える。答えないと代理人が埋める。 */
   answerAsk: (threadId: string, askId: string, answer: AskAnswer) => Promise<void>;
   decide: (threadId: string, decision: Decision) => Promise<void>;
@@ -529,6 +531,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     [patch],
   );
 
+  const checkHuman = useCallback(
+    async (threadId: string) => {
+      await patch(threadId, (state) => ({ ...state, checks: [...(state.checks ?? []), isoTime(new Date())] }));
+    },
+    [patch],
+  );
+
   const answerAsk = useCallback(
     async (threadId: string, askId: string, answer: AskAnswer) => {
       await patch(threadId, (state) => ({ ...state, answers: { ...state.answers, [askId]: answer } }));
@@ -630,6 +639,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       draftFor,
       delegate,
       markRead,
+      checkHuman,
       answerAsk,
       decide,
       startInherited,
@@ -640,6 +650,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     agentLog,
     answerAsk,
     appendTexts,
+    checkHuman,
     disableLab,
     enableLab,
     generateFor,

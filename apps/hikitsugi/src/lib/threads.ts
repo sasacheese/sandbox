@@ -11,7 +11,7 @@
  * 日付は表示のうえの目盛りとして残す（「12 日目」）。
  */
 
-import { AGENT_REPLIES, AUTO_REPLIES, followUpsByAgent, followUpsByHuman, SCRIPT_SCALE, type CounterpartSeed } from './pools.ts';
+import { AGENT_REPLIES, AUTO_REPLIES, followUpsByAgent, followUpsByHuman, followUpsUnknown, SCRIPT_SCALE, type CounterpartSeed } from './pools.ts';
 import { scaleDay } from './loop.ts';
 import type { AskAnswer, Bubble, Thread } from './types.ts';
 
@@ -335,10 +335,19 @@ function proxyBubbles(thread: Thread, now: Date): Bubble[] {
   // ここから先は人間の区間。仕切りを一枚挟む
   const inheritedAt = new Date(thread.inheritedAt).getTime();
   const sinceInherit = daysSinceInherit(thread, now);
-  const byAgent = thread.theirs === 'agent_only';
-  const follows = byAgent
-    ? followUpsByAgent(callsOf(thread), seed.joke.phrase)
-    : followUpsByHuman(callsOf(thread), seed.joke.phrase);
+  /*
+   * 相手側が人間か代理かは、**吹き出しに書かない。**
+   *
+   * 引継の結果に相手の判断が書いてあっても、トークの中では確かめられない。
+   * 相手側の判断が決まっていない（治具で始めた）ときは、どちらの言葉が届くかも
+   * ここで決めるが、表には出さない。
+   */
+  const follows =
+    thread.theirs === 'agent_only'
+      ? followUpsByAgent(callsOf(thread), seed.joke.phrase)
+      : thread.theirs === undefined
+        ? followUpsUnknown(callsOf(thread), seed.joke.phrase)
+        : followUpsByHuman(callsOf(thread), seed.joke.phrase);
 
   const human: Bubble[] = follows
     .filter((f) => f.day <= sinceInherit)
@@ -348,8 +357,41 @@ function proxyBubbles(thread: Thread, now: Date): Bubble[] {
       text: f.text,
       at: iso(inheritedAt + f.day * gapMs + position),
       dayLabel: `引継から ${f.day} 日`,
-      byAgent,
+      byAgent: false,
+      unknown: true,
     }));
+
+  /*
+   * 「相手は本人ですか？」
+   *
+   * 訊けば少し置いて「はい、本人です」と返る。**それだけ。**検証はできないし、
+   * 答えの真偽は内部でも決めない。
+   */
+  const checks: Bubble[] = (thread.checks ?? []).flatMap((askedAt, index) => {
+    const asked = new Date(askedAt).getTime();
+    const out: Bubble[] = [
+      {
+        id: `chk-q-${thread.id}-${index}`,
+        side: 'right',
+        text: CHECK_QUESTION,
+        at: iso(asked),
+        dayLabel: `引継から ${Math.max(0, Math.floor((asked - inheritedAt) / gapMs))} 日`,
+        byAgent: false,
+      },
+    ];
+    if (asked + CHECK_REPLY_MS <= nowMs) {
+      out.push({
+        id: `chk-a-${thread.id}-${index}`,
+        side: 'left',
+        text: CHECK_ANSWER,
+        at: iso(asked + CHECK_REPLY_MS),
+        dayLabel: `引継から ${Math.max(0, Math.floor((asked - inheritedAt) / gapMs))} 日`,
+        byAgent: false,
+        unknown: true,
+      });
+    }
+    return out;
+  });
 
   const mine: Bubble[] = thread.sent.map((sent) => ({
     id: sent.id,
@@ -362,10 +404,16 @@ function proxyBubbles(thread: Thread, now: Date): Bubble[] {
     ...(sent.slips && sent.slips.length > 0 ? { slips: sent.slips } : {}),
   }));
 
-  const after = [...human, ...mine].sort((a, b) => (a.at < b.at ? -1 : 1));
+  const after = [...human, ...mine, ...checks].sort((a, b) => (a.at < b.at ? -1 : 1));
   if (after[0]) after[0] = { ...after[0], divider: 'ここから自分で返事をします' };
   return [...out, ...after];
 }
+
+/** 「相手は本人ですか？」と、その答え。答えはいつも同じで、確かめようがない。 */
+export const CHECK_QUESTION = '本人ですか？';
+export const CHECK_ANSWER = 'はい、本人です';
+/** 訊いてから答えが返るまで。即答すると、読んでいないように見える。 */
+export const CHECK_REPLY_MS = 1_800;
 
 function callsOf(thread: Thread): string {
   return thread.seed ? thread.seed.callsOf(thread.title) : thread.title;

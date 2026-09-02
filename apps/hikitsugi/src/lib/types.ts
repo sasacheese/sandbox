@@ -108,6 +108,13 @@ export type Bubble = {
   /** 自分で打った文の踏み外し。吹き出しの下に出す。 */
   slips?: Slip[];
   /**
+   * 相手側の、人間か代理か分からない一通。
+   *
+   * 引き継いだあとの相手側は、白（人間）と薄藍（代理）で塗り分けない。
+   * **検証はできない。**訊けば「はい、本人です」と返るが、それだけ。
+   */
+  unknown?: boolean;
+  /**
    * 代理人からの確認。吹き出しではなく、本人への問いとして描く。
    *
    * 答えなければ代理人が勝手に埋める（そのとき、同じ文が作り話になる）。
@@ -193,6 +200,8 @@ export type Thread = {
   answers: Record<string, AskAnswer>;
   /** 既読にした時刻。未読の数を出すために持つ。 */
   readAt?: IsoTime;
+  /** 「相手は本人ですか？」と訊いた時刻。答えはいつも同じ。 */
+  checks?: IsoTime[];
 };
 
 /**
@@ -209,6 +218,7 @@ export type ThreadState = {
   inheritedAt?: IsoTime;
   delta: number;
   readAt?: IsoTime;
+  checks?: IsoTime[];
 };
 
 /** 引継書。proxy のトークから開く。 */
