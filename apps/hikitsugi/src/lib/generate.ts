@@ -12,11 +12,13 @@
 import { closenessOf as closenessBase } from './closeness.ts';
 import { loopAt, plansAt, type Plan } from './loop.ts';
 import { AUTO_REPLIES, COUNTERPARTS, NOTES, SCRIPT_SCALE, type CounterpartSeed, type Source } from './pools.ts';
-import { DEFAULT_GAP_MS } from './threads.ts';
+import { SAYS } from './agent.ts';
+import { askGraceMs, bubblesOf, DEFAULT_GAP_MS, isReady } from './threads.ts';
 import { digestOf, habitsOf, type Message, type Transcript } from './transcript.ts';
 import {
   isoTime,
   type Belief,
+  type Bubble,
   type Handover,
   type Intake,
   type TheirDecision,
@@ -149,10 +151,73 @@ export function buildProxyThreads(
 /**
  * 自分の代理とのトーク。一件だけ。
  *
- * 履歴の欄に、こちらの指示と代理の返事がそのまま入る。**一周が終わっても
- * 消えない**——指示は本人の意思なので、進行と一緒に流してはいけない。
+ * 中身は二つが混ざる。
+ *
+ * 1. **保存してあるもの**——こちらの指示と、それへの返事
+ * 2. **他のトークの状態から毎回組み立てるもの**——代理が自分から言ってくること。
+ *    声をかけた報告、「これ言っていい？」の確認、返事が無くて勝手に言った報告、
+ *    一区切りついた報告
+ *
+ * 確認は、相手のトークにある同じ札と一つのもの。ここで答えれば向こうも埋まる。
+ * **一周が終わっても 1. は消えない**——指示は本人の意思なので、進行と一緒に流さない。
  */
-export function buildAgentThread(log: readonly Message[], loopStart: number): Thread {
+export function buildAgentThread(log: readonly Message[], loopStart: number, proxies: readonly Thread[] = [], now: Date = new Date()): Thread {
+  const feed: Bubble[] = log.map((message, index) => ({
+    id: `a-${index}`,
+    side: message.mine ? 'right' : 'left',
+    text: message.text,
+    at: isoTime(new Date(message.at)),
+    dayLabel: dayOf(message.at),
+    byAgent: !message.mine,
+    ...(message.mine ? {} : { source: 'them' as const }),
+  }));
+
+  for (const thread of proxies) {
+    if (!thread.seed) continue;
+    const bubbles = bubblesOf(thread, now);
+    const first = bubbles.find((b) => !b.system);
+    if (!first) continue;
+    const say = (id: string, at: string, text: string, extra: Partial<Bubble> = {}): Bubble => ({
+      id: `${id}-${thread.id}`,
+      side: 'left',
+      text,
+      at: at as Bubble['at'],
+      dayLabel: dayOf(new Date(at).getTime()),
+      byAgent: true,
+      source: 'them',
+      ...extra,
+    });
+
+    feed.push(say('start', first.at, SAYS.started(thread.title)));
+
+    for (const bubble of bubbles) {
+      if (!bubble.ask) continue;
+      const ask = thread.seed.asks.find((a) => a.id === bubble.ask?.id);
+      if (!ask) continue;
+      if (bubble.ask.autoFilled) {
+        // 答えが無くて、代理が勝手に言った。そのことは言ってくる
+        const at = new Date(new Date(bubble.at).getTime() + askGraceMs(thread.gapMs)).toISOString();
+        feed.push(say(`guessed-${ask.id}`, at, SAYS.guessed(thread.title, ask.onGuess)));
+        continue;
+      }
+      // まだ答えられる（あるいは答えた）確認。友達の口調で訊く
+      feed.push(
+        say(`ask-${ask.id}`, bubble.at, ask.chat ?? ask.text, {
+          ask: { ...bubble.ask, text: ask.chat ?? ask.text, threadId: thread.id },
+        }),
+      );
+    }
+
+    if (isReady(thread, now) || thread.decision) {
+      const last = bubbles.at(-1);
+      if (last) feed.push(say('done', new Date(new Date(last.at).getTime() + thread.gapMs).toISOString(), SAYS.done(thread.title)));
+    }
+  }
+
+  feed.sort((a, b) => (a.at < b.at ? -1 : a.at > b.at ? 1 : 0));
+  // 未来の時刻のものは出さない（一区切りの報告は最後の一通の少し後に置くため）
+  const visible = feed.filter((b) => new Date(b.at).getTime() <= now.getTime());
+
   return {
     id: 'agent',
     kind: 'agent',
@@ -162,10 +227,15 @@ export function buildAgentThread(log: readonly Message[], loopStart: number): Th
     gapMs: DEFAULT_GAP_MS,
     posts: 0,
     history: [...log],
+    feed: visible,
     delta: 0,
     sent: [],
     answers: {},
   };
+}
+
+function dayOf(at: number): string {
+  return new Date(at).toLocaleDateString('ja-JP', { year: 'numeric', month: 'numeric', day: 'numeric' });
 }
 
 export function buildThreads(
@@ -179,11 +249,8 @@ export function buildThreads(
 ): Thread[] {
   const { index } = loopAt(now, startedAt, loopMs);
   const loopStart = startedAt + index * loopMs;
-  return [
-    buildAgentThread(agentLog, loopStart),
-    ...buildProxyThreads(now, transcripts, startedAt, loopMs, seeds, holds),
-    ...buildPlainThreads(transcripts, loopStart),
-  ];
+  const proxies = buildProxyThreads(now, transcripts, startedAt, loopMs, seeds, holds);
+  return [buildAgentThread(agentLog, loopStart, proxies, now), ...proxies, ...buildPlainThreads(transcripts, loopStart)];
 }
 
 /** 本人が触った跡を、組み立てたトークへ重ねる。 */

@@ -59,7 +59,7 @@ function Live({ count }: { count: number }) {
 }
 
 function Row({ thread, onOpen }: { thread: Thread; onOpen: (threadId: string) => void }) {
-  const { now, handoverFor } = useStore();
+  const { now, handoverFor, own } = useStore();
   const bubbles = bubblesOf(thread, now);
   const preview = previewOf(bubbles);
   const unread = unreadOf(thread, bubbles);
@@ -78,7 +78,7 @@ function Row({ thread, onOpen }: { thread: Thread; onOpen: (threadId: string) =>
       onClick={() => onOpen(thread.id)}
     >
       {thread.kind === 'agent' ? (
-        <Avatar name="代" agent />
+        <Avatar name={own ?? '？'} clone />
       ) : thread.kind === 'proxy' ? (
         <Avatar name={thread.title} inherited={base} current={current} live={isLive(thread, now)} />
       ) : (
@@ -86,7 +86,7 @@ function Row({ thread, onOpen }: { thread: Thread; onOpen: (threadId: string) =>
       )}
       <div className="row__body">
         <div className="row__top">
-          <span className="row__title">{thread.title}</span>
+          <span className="row__title">{thread.kind === 'agent' ? `${own ?? 'あなた'}（代理）` : thread.title}</span>
           <span className="row__time">{listTime(preview.at, now)}</span>
         </div>
         <div className="row__preview">
@@ -106,7 +106,7 @@ function Row({ thread, onOpen }: { thread: Thread; onOpen: (threadId: string) =>
 
 function State({ thread, closeness }: { thread: Thread; closeness: number }) {
   const { now } = useStore();
-  if (thread.kind === 'agent') return <span className="chip-state chip-state--proxy">あなたの代理</span>;
+  if (thread.kind === 'agent') return <span className="chip-state chip-state--proxy">あなたのフリをして連絡する役</span>;
   if (thread.kind === 'plain' && !thread.decision) return null;
   if (isHeld(thread)) return <span className="chip-state chip-state--closed">あなたの指示で止めています</span>;
 

@@ -4,12 +4,9 @@ import { useStore } from '../store.tsx';
 
 /** 設定。作品の外側の都合だけ置く。作り込まない。 */
 export function Settings() {
-  const { settings, setLoopMs, reset, persistent, intake, threads, loop, transcripts, own, lab, disableLab, appendTexts, api, setApi, seeds } =
-    useStore();
+  const { settings, setLoopMs, reset, persistent, intake, threads, loop, transcripts, own, lab, disableLab, appendTexts, seeds } = useStore();
   const file = useRef<HTMLInputElement>(null);
   const [added, setAdded] = useState<number | null>(null);
-  const [key, setKey] = useState(api.key);
-  const [model, setModel] = useState(api.model);
   const generated = seeds.filter((seed) => seed.generated).length;
   const inherited = threads.filter((t) => t.decision === 'inherit').length;
   const agentSent = threads.reduce((n, t) => n + t.sent.filter((s) => s.byAgent).length, 0);
@@ -25,30 +22,7 @@ export function Settings() {
         <section className="section">
           <div className="section__head">
             <span className="section__no">01</span>
-            <span className="section__title">一周の長さ</span>
-          </div>
-          <div className="choices">
-            {LOOP_PRESETS.map((preset) => (
-              <button
-                key={preset.ms}
-                type="button"
-                className={`opt${settings.loopMs === preset.ms ? ' opt--on' : ''}`}
-                onClick={() => void setLoopMs(preset.ms)}
-              >
-                {preset.label}
-              </button>
-            ))}
-          </div>
-          <span className="sub">
-            代理のトークは九本あり、順に出てきて順に終わります。全部出し切ると最初に戻り、引き継いだ相手も、答えた確認も残りません。
-            短くするほど一通ごとの間隔が詰まります。変えると一周目の最初から始まります。
-          </span>
-        </section>
-
-        <section className="section">
-          <div className="section__head">
-            <span className="section__no">02</span>
-            <span className="section__title">トーク履歴を足す</span>
+            <span className="section__title">トーク履歴を追加</span>
           </div>
           <p className="sub">
             LINE の「トーク履歴を送信」で書き出した .txt を追加できます。同じ相手のものは差し替えます。端末の外へは出ません。
@@ -68,45 +42,13 @@ export function Settings() {
             }}
           />
           <button className="btn btn--ghost" type="button" onClick={() => file.current?.click()}>
-            ファイルを選んで足す
+            トーク履歴を追加
           </button>
         </section>
 
         <section className="section">
           <div className="section__head">
-            <span className="section__no">03</span>
-            <span className="section__title">代理のやり取りを作る</span>
-          </div>
-          <p className="sub">
-            取り込んだ相手には台本がありません。モデルの鍵を入れると、友達の一覧から、その人の過去ログを読んで代理のやり取りを作れます。
-            鍵はこの端末にだけ置き、送る先はモデルの API だけです。
-            {generated > 0 ? `　いま ${generated} 人ぶんを作ってあります。` : ''}
-          </p>
-          <div className="field">
-            <span className="field__key">OpenAI API キー</span>
-            <input
-              className="input input--key"
-              type="password"
-              value={key}
-              onChange={(e) => setKey(e.target.value)}
-              placeholder="sk-…"
-              autoComplete="off"
-            />
-          </div>
-          <div className="field">
-            <span className="field__key">モデル</span>
-            <div className="field__row">
-              <input className="input input--key" value={model} onChange={(e) => setModel(e.target.value)} autoComplete="off" />
-              <button className="btn btn--ghost" type="button" style={{ flex: 'none', width: 'auto', padding: '0 16px' }} onClick={() => void setApi({ key, model })}>
-                保存
-              </button>
-            </div>
-          </div>
-        </section>
-
-        <section className="section">
-          <div className="section__head">
-            <span className="section__no">04</span>
+            <span className="section__no">02</span>
             <span className="section__title">記録</span>
           </div>
           <div className="cover__rows">
@@ -130,6 +72,12 @@ export function Settings() {
               <span className="kv__key">代理応答</span>
               <span className="kv__value">{lab ? `オン（${intake?.persona ?? 0}）` : 'オフ'}</span>
             </div>
+            {generated > 0 ? (
+              <div className="kv">
+                <span className="kv__key">履歴から作った代理</span>
+                <span className="kv__value num">{generated} 人</span>
+              </div>
+            ) : null}
             <div className="kv">
               <span className="kv__key">引き継いだ相手</span>
               <span className="kv__value num">{inherited} 件</span>
@@ -152,7 +100,7 @@ export function Settings() {
         {lab ? (
           <section className="section">
             <div className="section__head">
-              <span className="section__no">05</span>
+              <span className="section__no">03</span>
               <span className="section__title">代理応答をやめる</span>
             </div>
             <p className="sub">
@@ -166,13 +114,37 @@ export function Settings() {
 
         <section className="section">
           <div className="section__head">
-            <span className="section__no">{lab ? '06' : '05'}</span>
+            <span className="section__no">{lab ? '04' : '03'}</span>
             <span className="section__title">記録を消す</span>
           </div>
           <p className="sub">取り込んだ履歴も、代理のやり取りも消えます。消しても、相手の記憶は残ります。</p>
           <button className="btn btn--ghost" type="button" onClick={() => void reset()}>
             すべて消して最初から
           </button>
+        </section>
+
+        <section className="section">
+          <div className="section__head">
+            <span className="section__no">{lab ? '05' : '04'}</span>
+            <span className="section__title">デモ用設定</span>
+          </div>
+          <span className="field__key">一周の長さ</span>
+          <div className="choices">
+            {LOOP_PRESETS.map((preset) => (
+              <button
+                key={preset.ms}
+                type="button"
+                className={`opt${settings.loopMs === preset.ms ? ' opt--on' : ''}`}
+                onClick={() => void setLoopMs(preset.ms)}
+              >
+                {preset.label}
+              </button>
+            ))}
+          </div>
+          <span className="sub">
+            作品として見せるための項目です。代理のトークは順に出てきて順に終わり、全部出し切ると最初に戻ります（引き継いだ相手も、答えた確認も残りません）。
+            短くするほど一通ごとの間隔が詰まります。変えると一周目の最初から始まります。
+          </span>
         </section>
       </div>
     </>

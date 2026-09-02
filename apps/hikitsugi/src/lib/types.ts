@@ -97,7 +97,15 @@ export type Bubble = {
    * 答えなければ代理人が勝手に埋める（そのとき、同じ文が作り話になる）。
    * **同じ一文が、答えたかどうかで事実にも嘘にもなる**のがこの作りの要点。
    */
-  ask?: { id: string; text: string; gap?: string; answered?: AskAnswer; autoFilled?: boolean };
+  ask?: {
+    id: string;
+    text: string;
+    gap?: string;
+    answered?: AskAnswer;
+    autoFilled?: boolean;
+    /** 代理とのトークに出すとき、答えを届ける先のトーク。 */
+    threadId?: string;
+  };
 };
 
 /** 確認への答え。`guess` は「代理にまかせる」——作り話になる。 */
@@ -121,6 +129,13 @@ export type Thread = {
   seedId?: string;
   /** proxy のときだけ。台本そのもの（手書きか、取り込んだ履歴から生成したか）。 */
   seed?: CounterpartSeed;
+  /**
+   * agent のときだけ。組み立て済みの中身。
+   *
+   * 代理とのトークは、こちらの指示と返事（保存してある）に、代理が自分から
+   * 言ってくること（他のトークの状態から毎回組み立てる）が混ざる。
+   */
+  feed?: Bubble[];
   /**
    * 止めているあいだの記録。
    *

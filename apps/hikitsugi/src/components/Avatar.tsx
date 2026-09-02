@@ -20,7 +20,7 @@ export function Avatar({
   progress,
   mark,
   live = false,
-  agent = false,
+  clone = false,
 }: {
   name: string;
   size?: number;
@@ -30,8 +30,13 @@ export function Avatar({
   mark?: string;
   /** いまやり取りが動いている。環が脈打つ。 */
   live?: boolean;
-  /** 自分の代理。名前の色ではなく藍で塗る。 */
-  agent?: boolean;
+  /**
+   * 自分の代理。**自分の顔を少しずらして重ねた**形にする。
+   *
+   * 藍で塗ると「別のもの」に見える。代理はあなたのフリをする役なので、
+   * 見た目もあなたの複製でなければならない。
+   */
+  clone?: boolean;
 }) {
   const ringed = inherited !== undefined || progress !== undefined;
   const stroke = size >= 40 ? 3 : 2.5;
@@ -61,7 +66,8 @@ export function Avatar({
   );
 
   return (
-    <span className={`avatar${ringed ? ' avatar--ringed' : ''}${live ? ' avatar--live' : ''}`} style={{ width: size, height: size }}>
+    <span className={`avatar${ringed ? ' avatar--ringed' : ''}${live ? ' avatar--live' : ''}${clone ? ' avatar--clone' : ''}`} style={{ width: size, height: size }}>
+      {clone ? <span className="avatar__ghost" style={{ background: `hsl(${hueOf(name)} 22% 44%)` }} aria-hidden="true" /> : null}
       {ringed ? (
         <svg className="avatar__ring" viewBox={`0 0 ${size} ${size}`} aria-hidden="true">
           <circle cx={c} cy={c} r={r} fill="none" strokeWidth={stroke} className="avatar__rest" />
@@ -77,15 +83,15 @@ export function Avatar({
         </svg>
       ) : null}
       <span
-        className={`avatar__face${agent ? ' avatar__face--agent' : ''}`}
+        className="avatar__face"
         style={{ background: `hsl(${hueOf(name)} 22% 44%)`, fontSize: size >= 40 ? 15 : 12 }}
         aria-hidden="true"
       >
         {initial(name)}
       </span>
-      {mark ? (
+      {mark || clone ? (
         <span className="avatar__mark" aria-hidden="true">
-          {mark}
+          {mark ?? '代'}
         </span>
       ) : null}
     </span>

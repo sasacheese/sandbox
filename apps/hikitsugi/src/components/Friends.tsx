@@ -197,7 +197,7 @@ function Friend({ thread, onOpen }: { thread: Thread; onOpen: (threadId: string)
               {state === 'busy' ? '過去ログを読んでいます…' : state === 'error' ? '作れませんでした。もう一度' : 'この人との代理のやり取りを作る'}
             </button>
           ) : (
-            <p className="friend__blocked">この人は代理応答を使っていません。設定でモデルの鍵を入れると、過去ログから代理のやり取りを作れます。</p>
+            <p className="friend__blocked">この人は代理応答を使っていません。</p>
           )
         ) : null}
       </div>

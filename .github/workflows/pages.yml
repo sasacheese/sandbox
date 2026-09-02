@@ -36,7 +36,13 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+      # 関係引継の台本生成は、ブラウザから直接モデルを呼ぶ。鍵はビルド時に
+      # 束ねる（設定画面には出さない、という本人の判断）。**配信物に入るので
+      # 公開サイトから読める**——上限つきの鍵を使うこと。
       - name: Build every app
+        env:
+          VITE_OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          VITE_OPENAI_MODEL: ${{ vars.OPENAI_MODEL }}
         run: |
           set -euo pipefail
           mkdir -p _site

@@ -72,3 +72,6 @@ jobs:
       pages: write
       id-token: write
     uses: ./.github/workflows/pages.yml
+    # 呼ばれた側は secret を受け取れないので、明示して渡す。無いと、こちらから
+    # 起きたデプロイだけ関係引継の台本生成が鍵なしで束ねられて、黙って使えなくなる
+    secrets: inherit

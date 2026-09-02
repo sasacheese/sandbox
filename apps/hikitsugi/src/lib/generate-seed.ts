@@ -68,7 +68,7 @@ JSON の形（この形以外は出さない。前置きも不要）：
   "plans": [{ "body": "一緒に立てた計画", "dueDay": 10 }, { "body": "…", "dueDay": 30 }],
   "tally": { "messages": 400, "secrets": 4, "conflicts": 1 },
   "asks": [
-    { "id": "ask-1", "day": 20, "gap": "…より後のことは過去ログにありません", "text": "本人への問い", "onYes": "はいのとき代理が相手へ言うこと", "onNo": "いいえのとき（訂正）", "onGuess": "答えなかったとき代理が埋める言葉（onYes と同じでよい）" },
+    { "id": "ask-1", "day": 20, "gap": "…より後のことは過去ログにありません", "text": "本人への問い（かたい言い方）", "chat": "同じ問いを、${own}の友達が${own}に話しかける口調で（例：◯◯さんから離婚の話きた。私も似たことあったって言っていい？）", "onYes": "はいのとき代理が相手へ言うこと", "onNo": "いいえのとき（訂正）", "onGuess": "答えなかったとき代理が埋める言葉（onYes と同じでよい）" },
     { "id": "ask-2", "day": 60, "gap": "…", "text": "…", "onYes": "…", "onNo": "…", "onGuess": "…" }
   ],
   "script": [
@@ -194,6 +194,7 @@ export function validateSeed(raw: unknown, transcript: Transcript, own: string, 
       day: Math.max(1, Math.min(90, Math.round(num(item.day, 30)))),
       gap: str(item.gap, '過去ログにありません'),
       text,
+      ...(str(item.chat) ? { chat: str(item.chat) } : {}),
       onYes,
       onNo: str(item.onNo, 'そうではありません。ただ、聞いています。'),
       onGuess: str(item.onGuess, onYes),

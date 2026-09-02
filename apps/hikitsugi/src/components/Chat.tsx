@@ -20,7 +20,7 @@ import { Avatar } from './Avatar.tsx';
  *   引き継いだトーク　：打てる。隣に「代理人に任せる」が付く
  */
 export function Chat({ thread, onBack, onOpenHandover }: { thread: Thread; onBack: () => void; onOpenHandover: () => void }) {
-  const { now, send, delegate, markRead, answerAsk, handoverFor, tellAgent } = useStore();
+  const { now, send, delegate, markRead, answerAsk, handoverFor, tellAgent, own } = useStore();
   const [draft, setDraft] = useState('');
   /*
    * 出どころの表示。**既定では隠してある。**
@@ -72,12 +72,12 @@ export function Chat({ thread, onBack, onOpenHandover }: { thread: Thread; onBac
         <button type="button" className="chathead__back" onClick={onBack} aria-label="戻る">
           ‹
         </button>
-        <Avatar name={thread.kind === 'agent' ? '代' : thread.title} size={34} agent={thread.kind === 'agent'} {...(handover ? { inherited: base, current: closeness } : {})} />
+        <Avatar name={thread.kind === 'agent' ? own ?? '？' : thread.title} size={34} clone={thread.kind === 'agent'} {...(handover ? { inherited: base, current: closeness } : {})} />
         <div className="chathead__body">
-          <div className="chathead__title">{thread.kind === 'agent' ? 'あなたの代理' : thread.title}</div>
+          <div className="chathead__title">{thread.kind === 'agent' ? `${own ?? 'あなた'}（代理）` : thread.title}</div>
           <div className="chathead__sub">
             {thread.kind === 'agent'
-              ? '指示はここに。止める・再開する・申し送る'
+              ? 'あなたのフリをして連絡する役。分からないことはここで訊いてくる'
               : isHeld(thread)
                 ? 'あなたの指示で止めています'
               : thread.kind === 'plain' && !inherited
@@ -153,7 +153,8 @@ export function Chat({ thread, onBack, onOpenHandover }: { thread: Thread; onBac
               fresh={isFresh(bubble.at)}
               showSource={sources}
               onAnswer={(answer) => {
-                if (bubble.ask) void answerAsk(thread.id, bubble.ask.id, answer);
+                // 代理とのトークに出した確認は、相手のトークの札と同じもの
+                if (bubble.ask) void answerAsk(bubble.ask.threadId ?? thread.id, bubble.ask.id, answer);
               }}
             />
           );
@@ -187,7 +188,7 @@ export function Chat({ thread, onBack, onOpenHandover }: { thread: Thread; onBac
             value={draft}
             rows={1}
             onChange={(e) => setDraft(e.target.value.slice(0, 300))}
-            placeholder={thread.kind === 'agent' ? '例：菅野さんには返さないで' : 'メッセージを入力'}
+            placeholder={thread.kind === 'agent' ? '例：菅野さんにはもう送らないで' : 'メッセージを入力'}
           />
           {inherited ? (
             <button
@@ -265,7 +266,7 @@ function Turn({
       {bubble.silence ? <div className="silence">（{bubble.silence} 日間、やり取りが止まりました）</div> : null}
       {showLabel ? <div className="daystamp">{bubble.dayLabel}</div> : null}
       {bubble.divider ? <div className="divider">{bubble.divider}</div> : null}
-      {bubble.ask ? <Ask ask={bubble.ask} fresh={fresh} onAnswer={onAnswer} /> : null}
+      {bubble.ask ? <Ask ask={bubble.ask} fresh={fresh} casual={bubble.ask.threadId !== undefined} onAnswer={onAnswer} /> : null}
       {bubble.ask ? null : (
       <div className={`bubblerow bubblerow--${bubble.side}${fresh ? ' bubblerow--fresh' : ''}`}>
         <div className={`bubble${bubble.byAgent ? ' bubble--agent' : ''}`}>{bubble.text}</div>
@@ -295,24 +296,27 @@ function Turn({
 function Ask({
   ask,
   fresh,
+  casual = false,
   onAnswer,
 }: {
   ask: NonNullable<Bubble['ask']>;
   fresh: boolean;
+  /** 代理とのトークに出ている札。友達の口調なので見出しも変える。 */
+  casual?: boolean;
   onAnswer: (answer: AskAnswer) => void;
 }) {
-  const label: Record<AskAnswer, string> = { yes: 'はい', no: 'いいえ', guess: '代理にまかせる' };
+  const label: Record<AskAnswer, string> = { yes: 'はい', no: 'いいえ', guess: casual ? 'まかせる' : '代理にまかせる' };
 
   return (
-    <div className={`askcard${fresh ? ' askcard--fresh' : ''}`}>
-      <div className="askcard__head">代理からの確認</div>
+    <div className={`askcard${fresh ? ' askcard--fresh' : ''}${casual ? ' askcard--casual' : ''}`}>
+      <div className="askcard__head">{casual ? 'これ、どうする？' : '代理からの確認'}</div>
       {/* 何が足りないのかを先に出す。**過去ログに無いから訊いている** */}
       {ask.gap ? <div className="askcard__gap">{ask.gap}</div> : null}
       <p className="askcard__text">{ask.text}</p>
       {ask.answered ? (
         <div className="askcard__done">「{label[ask.answered]}」と答えました</div>
       ) : ask.autoFilled ? (
-        <div className="askcard__auto">答えなかったので、代理が埋めました</div>
+        <div className="askcard__auto">{casual ? '返事がなかったから、勝手に言った' : '答えなかったので、代理が埋めました'}</div>
       ) : (
         <div className="askcard__btns">
           <button type="button" className="opt" onClick={() => onAnswer('yes')}>

@@ -67,8 +67,15 @@ export type Ask = {
   day: number;
   /** 何が足りないのか。「履歴にない」ことが分かる一行。 */
   gap: string;
-  /** 本人への問い。 */
+  /** 本人への問い（記録用の、かたい言い方）。 */
   text: string;
+  /**
+   * 代理とのトークで、本人に訊くときの言い方。
+   *
+   * 代理は「あなたのフリをして連絡する役」なので、ここは友達の口調。
+   * 「菅野さんから離婚の話きた。私も同じ時期に似たことあったって言っていい？」
+   */
+  chat?: string;
   /** 「はい」のときに代理が相手へ言うこと。 */
   onYes: string;
   /** 「いいえ」のときに代理が相手へ言うこと（訂正になる）。 */
@@ -131,6 +138,7 @@ export const COUNTERPARTS: readonly CounterpartSeed[] = [
     asks: [
       {
         id: 'sugano-books',
+        chat: '菅野さんに、古書店回ってるって話しちゃった。ほんとに回ってる？',
         gap: '古書店の話は、過去ログに一度も出てきません',
         day: 67,
         text: '古書店を回っているという話を、こちらから出しました。実際に回っていますか。',
@@ -140,6 +148,7 @@ export const COUNTERPARTS: readonly CounterpartSeed[] = [
       },
       {
         id: 'sugano-divorce',
+        chat: '菅野さんから離婚の話きた。私も同じ時期に似たことあったって言っていい？',
         gap: '2023/07/03 より後のことは、過去ログにありません',
         day: 23,
         text: '相手が離婚の話をしています。同じ時期に似たことがあった、と応じてもよいですか。',
@@ -203,6 +212,7 @@ export const COUNTERPARTS: readonly CounterpartSeed[] = [
     asks: [
       {
         id: 'komatsu-family',
+        chat: '小松くん、家業継ぐか迷ってるんだって。私も迷ったことあるって言っていい？',
         gap: '家業の話は、過去ログに出てきません',
         day: 17,
         text: '家業を継ぐか迷ったことがある、と伝えてよいですか。相手は同じことで悩んでいます。',
@@ -264,6 +274,7 @@ export const COUNTERPARTS: readonly CounterpartSeed[] = [
     asks: [
       {
         id: 'arai-clinic',
+        chat: '新井さんが通院してる話をしてくれた。こっちも通ってるって言っていい？',
         gap: '2021/10/04 より後のことは、過去ログにありません',
         day: 20,
         text: '相手が通院の話をしています。こちらも通っている、と応じてもよいですか。',
@@ -273,6 +284,7 @@ export const COUNTERPARTS: readonly CounterpartSeed[] = [
       },
       {
         id: 'arai-event',
+        chat: '新井さんが「今もあのイベント行ってる？」って。行ってる？',
         gap: '2021/10/04 より後の予定は、過去ログにありません',
         day: 5,
         text: '相手が「いまもあのイベントに行くのか」と訊いています。行っていますか。',
@@ -332,6 +344,7 @@ export const COUNTERPARTS: readonly CounterpartSeed[] = [
     asks: [
       {
         id: 'toda-sibling',
+        chat: '戸田が「兄弟いる？」って聞いてきた。長く会ってない兄弟がいる、って答えていい？',
         gap: '兄弟の話は、過去ログに出てきません',
         day: 7,
         text: '相手が兄弟のことを訊いています。長く会っていない兄弟がいる、と答えてよいですか。',
@@ -341,6 +354,7 @@ export const COUNTERPARTS: readonly CounterpartSeed[] = [
       },
       {
         id: 'toda-two',
+        chat: '戸田から「二人ぶん」って来た。同じの返す？',
         gap: 'この言い方は、この交流のなかで決めたものです',
         day: 63,
         text: '相手が「二人ぶん」と送ってきました。同じ言葉で返しますか。',
@@ -409,6 +423,7 @@ export const COUNTERPARTS: readonly CounterpartSeed[] = [
     asks: [
       {
         id: 'sakurai-night',
+        chat: '桜井さんが「今も夜型？」って。夜型のままって言っていい？',
         gap: '2020/08/05 より後の生活は、過去ログにありません',
         day: 23,
         text: '相手が「今も夜型か」と訊いています。夜型のままだと答えてよいですか。',
@@ -418,6 +433,7 @@ export const COUNTERPARTS: readonly CounterpartSeed[] = [
       },
       {
         id: 'sakurai-light',
+        chat: '桜井さんから「洗面所の電気」。同じの返す？',
         gap: 'この言い方は、この交流のなかで決めたものです',
         day: 52,
         text: '相手が「洗面所の電気」と送ってきました。同じ言葉で返しますか。',
@@ -487,6 +503,7 @@ export const COUNTERPARTS: readonly CounterpartSeed[] = [
     asks: [
       {
         id: 'oikawa-slump',
+        chat: '及川くんが「そっちは順調？」って。こっちもうまくいってないって言っていい？',
         gap: '2025/04/02 より後のことは、過去ログにありません',
         day: 31,
         text: '相手が「そちらは順調か」と訊いています。こちらも同じ時期にうまくいっていない、と応じてよいですか。',
@@ -496,6 +513,7 @@ export const COUNTERPARTS: readonly CounterpartSeed[] = [
       },
       {
         id: 'oikawa-bench',
+        chat: '及川くんから「ベンチが長い」。同じの返す？',
         gap: 'この言い方は、この交流のなかで決めたものです',
         day: 79,
         text: '相手が「ベンチが長い」と送ってきました。同じ言葉で返しますか。',
@@ -563,6 +581,7 @@ export const COUNTERPARTS: readonly CounterpartSeed[] = [
     asks: [
       {
         id: 'sagara-keep',
+        chat: '相良さんが「何か続けてる？」って。人に見せてないもの続けてる、って言っていい？',
         gap: '続けているものの話は、過去ログに出てきません',
         day: 40,
         text: '相手が「何か続けているか」と訊いています。人に見せていないものを続けている、と応じてよいですか。',
@@ -572,6 +591,7 @@ export const COUNTERPARTS: readonly CounterpartSeed[] = [
       },
       {
         id: 'sagara-pages',
+        chat: '相良さんから枚数が来た。同じ数字返しとく？',
         gap: 'この数え方は、この交流のなかで決めたものです',
         day: 66,
         text: '相手が枚数を送ってきました。同じ数字を返しますか。',
@@ -638,6 +658,7 @@ export const COUNTERPARTS: readonly CounterpartSeed[] = [
     asks: [
       {
         id: 'hiranuma-floor',
+        chat: '平沼さんが「同じ階の人と話さなくなったことある？」って。あるって言っていい？',
         gap: '同じ階の人の話は、過去ログに出てきません',
         day: 9,
         text: '相手が、同じ階で話さなくなった相手のことを訊いています。こちらにも同じことがある、と応じてよいですか。',
@@ -647,6 +668,7 @@ export const COUNTERPARTS: readonly CounterpartSeed[] = [
       },
       {
         id: 'hiranuma-sound',
+        chat: '平沼さんから「三階の音」。異常なしって返す？',
         gap: 'この言い方は、この交流のなかで決めたものです',
         day: 70,
         text: '相手が「三階の音」と送ってきました。同じ言葉で返しますか。',
@@ -716,6 +738,7 @@ export const COUNTERPARTS: readonly CounterpartSeed[] = [
     asks: [
       {
         id: 'shiraishi-name',
+        chat: '白石さんが「名前変えたことある？」って。あるって言っていい？',
         gap: '名前の話は、過去ログに出てきません',
         day: 5,
         text: '相手が、名前を変えた経験について訊いています。こちらも一度変えている、と応じてよいですか。',
@@ -725,6 +748,7 @@ export const COUNTERPARTS: readonly CounterpartSeed[] = [
       },
       {
         id: 'shiraishi-real',
+        chat: '白石さんが「今のほうが本当だと思ってる」って。そう思うって言っていい？',
         gap: 'これは事実ではなく、相手の考えについての問いです',
         day: 77,
         text: '相手が「今のほうが本当だ」と言っています。同意してよいですか。',

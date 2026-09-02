@@ -34,7 +34,17 @@ const KV_PROGRESS = 'progress';
 const KV_SEEDS = 'seeds';
 const KV_RULES = 'rules';
 const KV_AGENT = 'agent';
-const KV_API = 'api';
+
+/**
+ * モデルの鍵と名前。ビルド時に GitHub の secret / variable から束ねる。
+ *
+ * **配信物に入るので、公開サイトから読める。**上限つきの鍵を使うこと。
+ * 設定画面には出さない（本人の判断）。手元の dev では空で、生成は使えない。
+ */
+const API: Api = {
+  key: import.meta.env.VITE_OPENAI_API_KEY ?? '',
+  model: import.meta.env.VITE_OPENAI_MODEL || DEFAULT_MODEL,
+};
 
 export type Settings = {
   /** 一巡の長さ。 */
@@ -72,7 +82,7 @@ export type Store = {
   holds: Holds;
   /** 代理への指示。一周が終わっても残る。 */
   rules: Rule[];
-  /** モデルの鍵と名前。端末にだけ置く。 */
+  /** モデルの鍵と名前。ビルド時に束ねたもの。空なら生成は使えない。 */
   api: Api;
   /** 台本を作っている最中／失敗した相手。 */
   generating: Record<string, 'busy' | 'error'>;
@@ -91,7 +101,6 @@ export type Store = {
   appendTexts: (texts: readonly string[]) => Promise<number>;
   /** 代理へ言う。止める・再開する・申し送る。 */
   tellAgent: (text: string) => Promise<void>;
-  setApi: (api: Api) => Promise<void>;
   /** 取り込んだ相手の代理のやり取りを、履歴から作る。鍵が要る。 */
   generateFor: (name: string) => Promise<void>;
   /** 代理応答をオンにする。ここから一周が始まる。 */
@@ -134,7 +143,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [stored, setStored] = useState<StoredSeed[]>([]);
   const [rulebook, setRulebook] = useState<{ rules: Rule[]; holds: Holds }>({ rules: [], holds: {} });
   const [agentLog, setAgentLog] = useState<Message[]>([]);
-  const [api, setApiState] = useState<Api>({ key: '', model: DEFAULT_MODEL });
   const [generating, setGenerating] = useState<Record<string, 'busy' | 'error'>>({});
   const rulebookRef = useRef(rulebook);
   useEffect(() => {
@@ -179,17 +187,15 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       setPersistent(ok);
       if (!ok) return;
       db.requestPersistence().catch(() => undefined);
-      const [loadedIntake, loadedSettings, loadedProgress, loadedTranscripts, loadedSeeds, loadedRules, loadedAgent, loadedApi] =
-        await Promise.all([
-          db.readKv<Intake>(KV_INTAKE),
-          db.readKv<Partial<Settings>>(KV_SETTINGS),
-          db.readKv<Progress>(KV_PROGRESS),
-          db.readKv<Transcript[]>(KV_TRANSCRIPTS),
-          db.readKv<StoredSeed[]>(KV_SEEDS),
-          db.readKv<{ rules: Rule[]; holds: Holds }>(KV_RULES),
-          db.readKv<Message[]>(KV_AGENT),
-          db.readKv<Api>(KV_API),
-        ]);
+      const [loadedIntake, loadedSettings, loadedProgress, loadedTranscripts, loadedSeeds, loadedRules, loadedAgent] = await Promise.all([
+        db.readKv<Intake>(KV_INTAKE),
+        db.readKv<Partial<Settings>>(KV_SETTINGS),
+        db.readKv<Progress>(KV_PROGRESS),
+        db.readKv<Transcript[]>(KV_TRANSCRIPTS),
+        db.readKv<StoredSeed[]>(KV_SEEDS),
+        db.readKv<{ rules: Rule[]; holds: Holds }>(KV_RULES),
+        db.readKv<Message[]>(KV_AGENT),
+      ]);
       if (cancelled) return;
       if (loadedTranscripts) setTranscripts(loadedTranscripts);
       if (loadedSeeds) setStored(loadedSeeds);
@@ -205,7 +211,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             : [];
       setAgentLog(opening);
       agentLogRef.current = opening;
-      if (loadedApi) setApiState({ key: loadedApi.key ?? '', model: loadedApi.model || DEFAULT_MODEL });
       // 履歴が無いのに代理応答だけオンになっている状態は作らない。
       // 代理は過去ログのある相手にしか出せないので、そこだけ残っても意味がない
       setIntake(loadedTranscripts && loadedTranscripts.length > 0 ? loadedIntake : null);
@@ -385,15 +390,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     [save, transcripts],
   );
 
-  const setApi = useCallback(
-    async (next: Api) => {
-      const cleaned = { key: next.key.trim(), model: next.model.trim() || DEFAULT_MODEL };
-      setApiState(cleaned);
-      await save(KV_API, cleaned);
-    },
-    [save],
-  );
-
   /**
    * 取り込んだ相手の台本を作る。
    *
@@ -403,11 +399,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const generateFor = useCallback(
     async (name: string) => {
       const transcript = transcripts.find((t) => t.name === name);
-      if (!transcript || !api.key || !intake) return;
+      if (!transcript || !API.key || !intake) return;
       setGenerating((g) => ({ ...g, [name]: 'busy' }));
       try {
         const phase = loopAt(new Date(), new Date(settings.startedAt).getTime(), settings.loopMs).phase / settings.loopMs;
-        const seed = await generateSeed(transcript, intake.name, intake.persona, api, phase);
+        const seed = await generateSeed(transcript, intake.name, intake.persona, API, phase);
         const next = [...stored.filter((s) => s.name !== name), seed];
         setStored(next);
         await save(KV_SEEDS, next);
@@ -420,7 +416,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         setGenerating((g) => ({ ...g, [name]: 'error' }));
       }
     },
-    [api, intake, save, settings.loopMs, settings.startedAt, stored, transcripts],
+    [intake, save, settings.loopMs, settings.startedAt, stored, transcripts],
   );
 
   /** 代理応答をオフにする。動いていた交流も、答えた確認も残らない。 */
@@ -537,7 +533,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       seeds,
       holds: rulebook.holds,
       rules: rulebook.rules,
-      api,
+      api: API,
       generating,
       mine: [...agent, ...[...mine].sort(byActivity)],
       proxies: [...proxies].sort(byActivity),
@@ -549,7 +545,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       importTexts,
       appendTexts,
       tellAgent,
-      setApi,
       generateFor,
       enableLab,
       disableLab,
@@ -564,7 +559,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   }, [
     agentLog,
     answerAsk,
-    api,
     appendTexts,
     disableLab,
     enableLab,
@@ -573,7 +567,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     importTexts,
     rulebook,
     seeds,
-    setApi,
     tellAgent,
     transcripts,
     decide,

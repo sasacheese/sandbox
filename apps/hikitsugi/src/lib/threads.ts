@@ -370,24 +370,6 @@ function callsOf(thread: Thread): string {
 }
 
 /**
- * 自分の代理とのトーク。
- *
- * 履歴の欄に、こちらの指示と代理の返事がそのまま入っている。**緑と薄い藍が
- * 交互に並ぶ、この画面で唯一の「人と代理が普通に話しているトーク」。**
- */
-function agentBubbles(thread: Thread): Bubble[] {
-  return thread.history.map((message, index) => ({
-    id: `a-${index}`,
-    side: message.mine ? 'right' : 'left',
-    text: message.text,
-    at: iso(message.at),
-    dayLabel: plainLabel(message.at),
-    byAgent: !message.mine,
-    ...(message.mine ? {} : { source: 'them' as const }),
-  }));
-}
-
-/**
  * 自分のトーク。
  *
  * **取り込んだ過去ログがそのまま出る。**作り物ではないので、止まっているのも
@@ -455,7 +437,8 @@ const WEEKLY: readonly string[] = [
 export const REPLY_DELAY_MS = 45_000;
 
 export function bubblesOf(thread: Thread, now: Date): Bubble[] {
-  if (thread.kind === 'agent') return agentBubbles(thread);
+  // 代理とのトークは組み立て済み（lib/generate.ts の buildAgentThread）
+  if (thread.kind === 'agent') return thread.feed ?? [];
   return thread.kind === 'proxy' ? proxyBubbles(thread, now) : plainBubbles(thread, now);
 }
 
