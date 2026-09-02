@@ -2533,3 +2533,80 @@ p {
   flex: 1;
   min-width: 0;
 }
+
+/* ================================================================= 代理の下書き・踏み外し */
+
+/*
+ * 代理の下書き。入力欄の上に、グレーで一行。
+ *
+ * 触ると入力欄に入る。押さなくてもいい。**押さないほうが自分の言葉になるのに、
+ * 押したほうが数字は保たれる**——その並びが見えるように、入力欄のすぐ上に置く。
+ */
+.composer {
+  flex-wrap: wrap;
+}
+
+.draftrow {
+  flex: 0 0 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 7px 14px 8px;
+  border: 1px dashed var(--rule-strong);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--paper) 70%, transparent);
+  text-align: left;
+  color: var(--muted);
+}
+
+.draftrow:active {
+  background: var(--field);
+}
+
+.draftrow__key {
+  font-family: var(--mono);
+  font-size: 9.5px;
+  letter-spacing: 0.1em;
+  color: var(--faint);
+}
+
+.draftrow__text {
+  font-size: 14px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  color: var(--muted);
+}
+
+/*
+ * 踏み外し。送ったあと、吹き出しの下に淡々と。
+ *
+ * 左に何が違うか、右に代理はどうだったか。色を付けない——叱っているのでは
+ * なく、引継書に書いてあったことと照らしただけ。
+ */
+.slips {
+  align-self: flex-end;
+  display: grid;
+  grid-template-columns: auto auto;
+  column-gap: 14px;
+  row-gap: 3px;
+  max-width: 88%;
+  margin-top: -4px;
+  padding: 6px 12px 7px;
+  border-left: 1px solid var(--rule-strong);
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+.slip {
+  display: contents;
+}
+
+.slip__label {
+  color: var(--ink-dim);
+}
+
+.slip__detail {
+  font-variant-numeric: tabular-nums;
+}

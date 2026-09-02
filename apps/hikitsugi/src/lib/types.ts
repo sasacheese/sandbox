@@ -54,6 +54,14 @@ export type TheirDecision = 'inherit' | 'refuse' | 'agent_only';
 /** 本人の判断。 */
 export type Decision = 'inherit' | 'extend' | 'end' | 'agent_only';
 
+/**
+ * 踏み外し。自分で打った文が、引継書に書かれた作法から外れていたところ。
+ *
+ * 左に何が違うか、右に代理はどうだったか。判定の材料は引継書がすでに持っている
+ * （呼び方・句点の癖・返信の速さ・一通の長さ・触れてはいけないこと）。
+ */
+export type Slip = { label: string; detail: string };
+
 /** 自分が打ったもの、または代理人に打たせたもの。 */
 export type Sent = {
   id: string;
@@ -61,6 +69,10 @@ export type Sent = {
   text: string;
   /** 代理人に任せた返信。 */
   byAgent: boolean;
+  /** 代理の下書きをそのまま送った。近さは下がらない。 */
+  draft?: boolean;
+  /** 自分で打ったときの踏み外し。送信後に淡々と出す。 */
+  slips?: Slip[];
 };
 
 /** 画面に出す一通。トークの種類にかかわらずこの形へ落とす。 */
@@ -91,6 +103,10 @@ export type Bubble = {
   silence?: number;
   /** この一通の前に挟む仕切り（引き継ぎの位置）。 */
   divider?: string;
+  /** 代理の下書きをそのまま送ったもの。 */
+  draft?: boolean;
+  /** 自分で打った文の踏み外し。吹き出しの下に出す。 */
+  slips?: Slip[];
   /**
    * 代理人からの確認。吹き出しではなく、本人への問いとして描く。
    *

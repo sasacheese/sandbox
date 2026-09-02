@@ -13,7 +13,9 @@ import { interpret, openingOf, replyFor, type Rule } from './lib/agent.ts';
 import { buildHandover, buildPlainThreads, buildThreads, withState, type Holds, type Jumps } from './lib/generate.ts';
 import { DEFAULT_MODEL, generateSeed, hydrateSeed, type Api, type StoredSeed } from './lib/generate-seed.ts';
 import { COUNTERPARTS, type CounterpartSeed } from './lib/pools.ts';
-import { ownNameOf, parseAll, type Message, type Transcript } from './lib/transcript.ts';
+import { ownNameOf, parseAll, toneOf, type Message, type Transcript } from './lib/transcript.ts';
+import { dropFor } from './lib/closeness.ts';
+import { draftFor as draftOf } from './lib/draft.ts';
 import { DEFAULT_LOOP_MS, loopAt } from './lib/loop.ts';
 import { agentReplyText, bubblesOf, isReady } from './lib/threads.ts';
 import {
@@ -111,7 +113,13 @@ export type Store = {
   enableLab: (persona: number) => Promise<void>;
   /** 代理応答をオフにする。動いていた交流は残らない。 */
   disableLab: () => Promise<void>;
-  send: (threadId: string, text: string) => Promise<void>;
+  /**
+   * 送る。`draft` は代理の下書きをそのまま送ったとき（近さは下がらない）。
+   * 自分で打ったときは、引継書の作法から外れたぶんを数えて、そのぶん下がる。
+   */
+  send: (threadId: string, text: string, options?: { draft?: boolean }) => Promise<void>;
+  /** いま入力欄の上に出す、代理の下書き。引き継いだトーク以外は null。 */
+  draftFor: (threadId: string) => string | null;
   delegate: (threadId: string) => Promise<void>;
   markRead: (threadId: string) => Promise<void>;
   /** 代理人からの確認に答える。答えないと代理人が埋める。 */
@@ -443,22 +451,40 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   }, [save]);
 
   const send = useCallback(
-    async (threadId: string, text: string) => {
+    async (threadId: string, text: string, options: { draft?: boolean } = {}) => {
       const trimmed = text.trim();
       if (!trimmed) return;
-      await patch(threadId, (state) => ({
-        ...state,
-        sent: [...state.sent, { id: newId('me'), at: isoTime(new Date()), text: trimmed, byAgent: false }],
+      const at = new Date();
+      await patch(threadId, (state) => {
+        const inherited = state.decision === 'inherit';
         /*
-         * 自分で打つと親密度が下がる。
+         * 代理の下書きをそのまま送れば、近さは保たれる。
          *
-         * 代理人のほうが返信が早く、相手の話を忘れず、言葉を選べる。
-         * **人間には勝てない条件で築かれた関係**を引き継いだ結果がこれ。
+         * 自分で打つと下がる。代理人のほうが返信が早く、相手の話を忘れず、
+         * 言葉を選べる。**人間には勝てない条件で築かれた関係**を引き継いだ
+         * 結果がこれ。
          */
-        delta: state.decision === 'inherit' ? state.delta - 8 : state.delta,
-      }));
+        if (options.draft) {
+          return { ...state, sent: [...state.sent, { id: newId('me'), at: isoTime(at), text: trimmed, byAgent: false, draft: true }] };
+        }
+        return {
+          ...state,
+          sent: [...state.sent, { id: newId('me'), at: isoTime(at), text: trimmed, byAgent: false }],
+          delta: inherited ? state.delta - dropFor(0) : state.delta,
+        };
+      });
     },
     [patch],
+  );
+
+  const draftFor = useCallback(
+    (threadId: string): string | null => {
+      const thread = threadsRef.current.find((t) => t.id === threadId);
+      if (!thread) return null;
+      const transcript = transcripts.find((t) => t.name === thread.title);
+      return draftOf(thread, bubblesOf(thread, now), transcript ? toneOf(transcript) : null);
+    },
+    [now, transcripts],
   );
 
   const delegate = useCallback(
@@ -580,6 +606,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       enableLab,
       disableLab,
       send,
+      draftFor,
       delegate,
       markRead,
       answerAsk,
@@ -603,6 +630,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     transcripts,
     decide,
     delegate,
+    draftFor,
     intake,
     markRead,
     now,

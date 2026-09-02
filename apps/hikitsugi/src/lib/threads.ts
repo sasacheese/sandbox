@@ -358,6 +358,8 @@ function proxyBubbles(thread: Thread, now: Date): Bubble[] {
     at: sent.at,
     dayLabel: `引継から ${Math.max(0, Math.floor((new Date(sent.at).getTime() - inheritedAt) / gapMs))} 日`,
     byAgent: sent.byAgent,
+    ...(sent.draft ? { draft: true } : {}),
+    ...(sent.slips && sent.slips.length > 0 ? { slips: sent.slips } : {}),
   }));
 
   const after = [...human, ...mine].sort((a, b) => (a.at < b.at ? -1 : 1));

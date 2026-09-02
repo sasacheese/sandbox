@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { SOURCE_LABEL } from '../lib/pools.ts';
 import { effectiveCloseness } from '../lib/closeness.ts';
+import { DRAFT_LABEL } from '../lib/draft.ts';
 import { clockTime, closenessLabel } from '../lib/format.ts';
 import { bubblesOf, daysSinceInherit, isHeld, isReady, nextPost, storyDay } from '../lib/threads.ts';
 import type { AskAnswer, Bubble, Thread } from '../lib/types.ts';
@@ -20,8 +21,9 @@ import { Avatar } from './Avatar.tsx';
  *   引き継いだトーク　：打てる。隣に「代理人に任せる」が付く
  */
 export function Chat({ thread, onBack, onOpenHandover }: { thread: Thread; onBack: () => void; onOpenHandover: () => void }) {
-  const { now, send, delegate, markRead, answerAsk, handoverFor, tellAgent, own } = useStore();
+  const { now, send, draftFor, delegate, markRead, answerAsk, handoverFor, tellAgent, own } = useStore();
   const [draft, setDraft] = useState('');
+  const suggestion = draftFor(thread.id);
   /*
    * 出どころの表示。**既定では隠してある。**
    *
@@ -183,6 +185,17 @@ export function Chat({ thread, onBack, onOpenHandover }: { thread: Thread; onBac
 
       {inherited || thread.kind === 'plain' || thread.kind === 'agent' ? (
         <div className="composer">
+          {/*
+            代理の下書き。**代理ならこう打った**を、入力欄の上にグレーで置く。
+            触れば入力欄に入る。無視して自分で打ってもいい——下書きで送れば近さは
+            保たれ、自分で打てば下がる。
+          */}
+          {suggestion && draft.trim() !== suggestion ? (
+            <button type="button" className="draftrow" onClick={() => setDraft(suggestion)}>
+              <span className="draftrow__key">{DRAFT_LABEL}</span>
+              <span className="draftrow__text">{suggestion}</span>
+            </button>
+          ) : null}
           <textarea
             className="composer__input"
             value={draft}
@@ -208,7 +221,8 @@ export function Chat({ thread, onBack, onOpenHandover }: { thread: Thread; onBac
             aria-label="送信"
             onClick={() => {
               if (thread.kind === 'agent') void tellAgent(draft);
-              else void send(thread.id, draft);
+              // 下書きをそのまま送ったかどうかは、文が一致するかで見る
+              else void send(thread.id, draft, { draft: suggestion !== null && draft.trim() === suggestion });
               setDraft('');
             }}
           >
@@ -271,11 +285,22 @@ function Turn({
       <div className={`bubblerow bubblerow--${bubble.side}${fresh ? ' bubblerow--fresh' : ''}`}>
         <div className={`bubble${bubble.byAgent ? ' bubble--agent' : ''}`}>{bubble.text}</div>
         <div className="bubble__meta">
-          {bubble.byAgent && showAgentMark ? <span className="agentmark">代</span> : null}
+          {/* 下書きをそのまま送ったものにも「代」が付く。打ったのはあなた、書いたのは代理 */}
+          {(bubble.byAgent || bubble.draft) && showAgentMark ? <span className="agentmark">代</span> : null}
           <span className="bubble__time">{clockTime(bubble.at)}</span>
         </div>
       </div>
       )}
+      {bubble.slips && bubble.slips.length > 0 ? (
+        <div className="slips">
+          {bubble.slips.map((slip) => (
+            <div className="slip" key={slip.label}>
+              <span className="slip__label">{slip.label}</span>
+              <span className="slip__detail">{slip.detail}</span>
+            </div>
+          ))}
+        </div>
+      ) : null}
       {showSource && bubble.source && !bubble.ask ? (
         <div className={`srcrow srcrow--${bubble.side}`}>
           <span className={`src src--${bubble.source}`}>{SOURCE_LABEL[bubble.source]}</span>

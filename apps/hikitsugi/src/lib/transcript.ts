@@ -163,9 +163,36 @@ export function byQuiet(a: Digest, b: Digest): number {
  * 気味が悪いのは、どれも当たっているからで、当たっているのは計算だからだ。
  */
 export function habitsOf(transcript: Transcript): string[] {
-  const mine = transcript.messages.filter((m) => m.mine);
-  if (mine.length === 0) return [];
+  const tone = toneOf(transcript);
+  if (!tone) return [];
   const out: string[] = [];
+  if (tone.replyMinutes !== null) out.push(`返信までに ${minutesLabel(tone.replyMinutes)}ほどかかること`);
+  if (tone.lateShare >= 0.3) out.push(`返信の ${Math.round(tone.lateShare * 100)} % が夜遅い時間であること`);
+  out.push(`一通が平均 ${tone.avgLength} 文字と短いこと`);
+  out.push(tone.period ? '文の終わりに句点を必ず打つこと' : '文の終わりに句点を打たないことが多いこと');
+  return out;
+}
+
+/**
+ * 過去ログから数えた、あなたの書き方。
+ *
+ * 代理はこれに寄せて書く。引き継いだあと、自分で打った文はここと比べられる
+ * ——**自分の過去の書き方から外れると、踏み外しになる。**
+ */
+export type Tone = {
+  /** 相手の一通に、何分で返していたか（中央値）。返した記録が無ければ null。 */
+  replyMinutes: number | null;
+  /** 夜遅く（22 時〜5 時）に書いた割合。 */
+  lateShare: number;
+  /** 一通の平均の文字数。 */
+  avgLength: number;
+  /** 文の終わりに句点を打つほうか。 */
+  period: boolean;
+};
+
+export function toneOf(transcript: Transcript): Tone | null {
+  const mine = transcript.messages.filter((m) => m.mine);
+  if (mine.length === 0) return null;
 
   // 相手の一通に、こちらが何分で返しているか
   const gaps: number[] = [];
@@ -175,20 +202,21 @@ export function habitsOf(transcript: Transcript): string[] {
     if (previous && current && !previous.mine && current.mine) gaps.push((current.at - previous.at) / 60_000);
   }
   const median = gaps.sort((a, b) => a - b)[Math.floor(gaps.length / 2)];
-  if (median !== undefined) {
-    out.push(median >= 60 ? `返信までに ${Math.round(median / 60)} 時間ほどかかること` : `返信までに ${Math.round(median)} 分ほどかかること`);
-  }
 
-  // 何時台に書いているか
   const hours = mine.map((m) => new Date(m.at + 9 * 3_600_000).getUTCHours());
-  const late = hours.filter((h) => h >= 22 || h < 5).length / hours.length;
-  if (late >= 0.3) out.push(`返信の ${Math.round(late * 100)} % が夜遅い時間であること`);
+  const lateShare = hours.filter((h) => h >= 22 || h < 5).length / hours.length;
+  const avgLength = Math.round(mine.reduce((n, m) => n + [...m.text].length, 0) / mine.length);
+  const period = mine.filter((m) => /[。．]$/.test(m.text)).length / mine.length >= 0.5;
 
-  const length = Math.round(mine.reduce((n, m) => n + [...m.text].length, 0) / mine.length);
-  out.push(`一通が平均 ${length} 文字と短いこと`);
+  return { replyMinutes: median === undefined ? null : Math.round(median), lateShare, avgLength, period };
+}
 
-  const ends = mine.filter((m) => /[。．]$/.test(m.text)).length / mine.length;
-  out.push(ends >= 0.5 ? '文の終わりに句点を必ず打つこと' : '文の終わりに句点を打たないことが多いこと');
-
-  return out;
+/** 分を「4 時間 12 分」「38 分」の形に。 */
+export function minutesLabel(minutes: number): string {
+  const whole = Math.max(0, Math.round(minutes));
+  if (whole < 1) return '1 分未満';
+  if (whole < 60) return `${whole} 分`;
+  const hours = Math.floor(whole / 60);
+  const rest = whole % 60;
+  return rest === 0 ? `${hours} 時間` : `${hours} 時間 ${rest} 分`;
 }
