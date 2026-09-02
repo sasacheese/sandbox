@@ -280,4 +280,6 @@ export type Handover = {
   tally: { messages: number; secrets: number; conflicts: number; otherAgents: number };
   notes: string[];
   theirs: TheirDecision;
+  /** 相手が代理応答を使っていない。**相手は、代理と話していたことを知らない。** */
+  solo?: boolean;
 };

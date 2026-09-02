@@ -150,7 +150,7 @@ function Count({ value }: { value: number }) {
 }
 
 function Friend({ thread, onOpen }: { thread: Thread; onOpen: (threadId: string) => void }) {
-  const { now, handoverFor, seeds, lab, api, generating, generateFor } = useStore();
+  const { now, handoverFor, seeds, lab, api, generating, generateFor, settings, sendProxyTo } = useStore();
   const handover = thread.kind === 'proxy' ? handoverFor(thread.id) : null;
   const days = thread.days ?? 0;
   const elapsed = Math.min(storyDay(thread, now), days);
@@ -189,7 +189,19 @@ function Friend({ thread, onOpen }: { thread: Thread; onOpen: (threadId: string)
           </div>
         ) : null}
         {thread.kind === 'plain' && !thread.decision && !registered && lab ? (
-          api.key ? (
+          settings.openToAll ? (
+            // 設定で解禁したとき。相手は人間なので、返ってくるのは人間の返事
+            <button
+              type="button"
+              className="friend__make"
+              onClick={(e) => {
+                e.stopPropagation();
+                void sendProxyTo(thread.title);
+              }}
+            >
+              この人に代理を送る（相手は代理応答を使っていません）
+            </button>
+          ) : api.key ? (
             <button
               type="button"
               className="friend__make"

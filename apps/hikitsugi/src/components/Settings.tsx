@@ -6,8 +6,24 @@ import { useStore } from '../store.tsx';
 
 /** 設定。作品の外側の都合だけ置く。作り込まない。 */
 export function Settings() {
-  const { settings, setLoopMs, reset, persistent, intake, threads, loop, transcripts, own, lab, disableLab, appendTexts, seeds, startInherited, feelings } =
-    useStore();
+  const {
+    settings,
+    setLoopMs,
+    setOpenToAll,
+    reset,
+    persistent,
+    intake,
+    threads,
+    loop,
+    transcripts,
+    own,
+    lab,
+    disableLab,
+    appendTexts,
+    seeds,
+    startInherited,
+    feelings,
+  } = useStore();
   const file = useRef<HTMLInputElement>(null);
   const [added, setAdded] = useState<number | null>(null);
   const generated = seeds.filter((seed) => seed.generated).length;
@@ -126,6 +142,26 @@ export function Settings() {
           <section className="section">
             <div className="section__head">
               <span className="section__no">03</span>
+              <span className="section__title">未対応の相手にも代理を送る</span>
+            </div>
+            <p className="sub">
+              既定では、代理を出せるのは相手も代理応答をオンにしている人だけです。オンにすると「未対応」の相手にも代理を送れます。相手は人間なので、返ってくるのは人間の返事です。このトークが自動応答であることは最初に表示されますが、相手はそれに触れません。
+            </p>
+            <div className="choices">
+              <button type="button" className={`opt${settings.openToAll ? '' : ' opt--on'}`} onClick={() => void setOpenToAll(false)}>
+                オフ
+              </button>
+              <button type="button" className={`opt${settings.openToAll ? ' opt--on' : ''}`} onClick={() => void setOpenToAll(true)}>
+                オン
+              </button>
+            </div>
+          </section>
+        ) : null}
+
+        {lab ? (
+          <section className="section">
+            <div className="section__head">
+              <span className="section__no">04</span>
               <span className="section__title">代理応答をやめる</span>
             </div>
             <p className="sub">
@@ -139,7 +175,7 @@ export function Settings() {
 
         <section className="section">
           <div className="section__head">
-            <span className="section__no">{lab ? '04' : '03'}</span>
+            <span className="section__no">{lab ? '05' : '03'}</span>
             <span className="section__title">記録を消す</span>
           </div>
           <p className="sub">取り込んだ履歴も、代理のやり取りも消えます。消しても、相手の記憶は残ります。</p>
@@ -150,7 +186,7 @@ export function Settings() {
 
         <section className="section">
           <div className="section__head">
-            <span className="section__no">{lab ? '05' : '04'}</span>
+            <span className="section__no">{lab ? '06' : '04'}</span>
             <span className="section__title">デモ用設定</span>
           </div>
           <span className="field__key">一周の長さ</span>

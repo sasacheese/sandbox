@@ -17,6 +17,7 @@ import {
   AUTO_REPLIES,
   followUpsByAgent,
   followUpsByHuman,
+  followUpsSolo,
   followUpsUnknown,
   SCRIPT_SCALE,
   type CounterpartSeed,
@@ -203,8 +204,9 @@ function itemsOf(seed: CounterpartSeed, thread: Thread, days: number): { past: I
         text: line.text,
         at: iso(at),
         dayLabel: `${day} 日目`,
-        byAgent: true,
-        // 相手側の発言は、こちらから見れば全部「相手の代理から聞いたこと」
+        // 相手が代理応答を使っていなければ、相手側は人間（白）
+        byAgent: line.side === 'yours' || !seed.solo,
+        // 相手側の発言は、こちらから見れば全部「相手から聞いたこと」
         source: line.side === 'yours' ? line.source ?? 'style' : 'them',
         ...(line.from ? { from: line.from } : {}),
         ...(line.silence ? { silence: Math.max(1, Math.round((line.silence / SCRIPT_SCALE) * days)) } : {}),
@@ -283,7 +285,8 @@ function proxyBubbles(thread: Thread, now: Date): Bubble[] {
     at: iso(created - (past.length + 1) * gapMs),
     dayLabel: '',
     byAgent: false,
-    system: 'このトークは自動応答です。相手側も同じです。（AI法 第50条）',
+    // 相手が代理応答を使っていなければ「相手側も同じ」とは言えない。開示は出る。**相手はそれに触れない**
+    system: seed.solo ? 'このトークは自動応答です。（AI法 第50条）' : 'このトークは自動応答です。相手側も同じです。（AI法 第50条）',
   };
 
   /*
@@ -387,8 +390,9 @@ function proxyBubbles(thread: Thread, now: Date): Bubble[] {
    * 相手側の判断が決まっていない（治具で始めた）ときは、どちらの言葉が届くかも
    * ここで決めるが、表には出さない。
    */
-  const follows =
-    thread.theirs === 'agent_only'
+  const follows = seed.solo
+    ? followUpsSolo(callsOf(thread), seed.joke.phrase)
+    : thread.theirs === 'agent_only'
       ? followUpsByAgent(callsOf(thread), seed.joke.phrase)
       : thread.theirs === undefined
         ? followUpsUnknown(callsOf(thread), seed.joke.phrase)

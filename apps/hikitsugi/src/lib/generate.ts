@@ -442,14 +442,22 @@ export function buildHandover(
       conflicts: seed.tally.conflicts,
       otherAgents: 18 + Math.floor(rand() * 40),
     },
-    // 本人が代理へ言った申し送りは、注意事項の末尾に載る
+    // 本人が代理へ言った申し送りは、注意事項の末尾に載る。
+    // 相手が代理応答を使っていなければ、そのことを最初に書く
     notes: [
+      ...(seed.solo ? [SOLO_NOTE] : []),
       ...NOTES,
       ...rules.filter((r) => r.kind === 'note' && (!r.target || r.target === seed.name)).map((r) => `本人からの申し送り：「${r.text}」`),
     ],
-    theirs: thread.theirs ?? 'refuse',
+    // 相手が代理応答を使っていなければ、相手側に判断は無い。人間がそのまま続ける
+    theirs: seed.solo ? 'inherit' : thread.theirs ?? 'refuse',
+    ...(seed.solo ? { solo: true } : {}),
   };
 }
+
+/** 相手が代理応答を使っていない相手の引継書に、最初に載る一行。 */
+export const SOLO_NOTE =
+  '相手は代理応答を使っていません。このトークが自動応答であることは最初に表示されましたが、相手はそれに触れていません。相手は、代理と話していたことを知りません。';
 
 /**
  * 引継書の作法。自分で打った文を照らす材料。

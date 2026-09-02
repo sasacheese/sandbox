@@ -12,6 +12,7 @@ import * as db from './lib/db.ts';
 import { interpret, openingOf, replyFor, type Rule } from './lib/agent.ts';
 import { buildAgentThread, buildHandover, buildPlainThreads, buildThreads, mannerOf, withState, type Holds, type Jumps } from './lib/generate.ts';
 import { slipsOf } from './lib/slips.ts';
+import { soloSeedOf } from './lib/solo.ts';
 import { DEFAULT_MODEL, generateSeed, hydrateSeed, type Api, type StoredSeed } from './lib/generate-seed.ts';
 import { COUNTERPARTS, type CounterpartSeed } from './lib/pools.ts';
 import { ownNameOf, parseAll, toneOf, type Message, type Transcript } from './lib/transcript.ts';
@@ -58,6 +59,13 @@ export type Settings = {
   loopMs: number;
   /** 一巡目が始まった時刻。ここからの経過で何巡目のどこにいるかが決まる。 */
   startedAt: IsoTime;
+  /**
+   * 相手が代理応答を使っていなくても、代理を送れるようにするか。既定はオフ。
+   *
+   * オンにすると「未対応」の相手にも代理を送れる。相手は人間なので、返って
+   * くるのは人間の返事。開示は出るが、相手はそれに触れない。
+   */
+  openToAll?: boolean;
 };
 
 /**
@@ -146,6 +154,10 @@ export type Store = {
    */
   startInherited: (seedId: string) => Promise<void>;
   setLoopMs: (loopMs: number) => Promise<void>;
+  /** 相手が代理応答を使っていなくても代理を送れるようにする。既定はオフ。 */
+  setOpenToAll: (on: boolean) => Promise<void>;
+  /** 「未対応」の相手に代理を送る。設定でオンにしたときだけ。鍵は要らない。 */
+  sendProxyTo: (name: string) => Promise<void>;
   reset: () => Promise<void>;
 };
 
@@ -259,7 +271,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       // 前の版の設定には一巡の情報が無い。その場合はいまを一巡目の頭にする
       setSettings(
         loadedSettings?.startedAt && loadedSettings.loopMs
-          ? { loopMs: loadedSettings.loopMs, startedAt: loadedSettings.startedAt }
+          ? { loopMs: loadedSettings.loopMs, startedAt: loadedSettings.startedAt, ...(loadedSettings.openToAll ? { openToAll: true } : {}) }
           : freshSettings(new Date()),
       );
       if (loadedProgress?.states) setProgress(loadedProgress);
@@ -629,15 +641,43 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const setLoopMs = useCallback(
     async (loopMs: number) => {
       // 速さを変えたら一巡目の頭から。途中で伸縮させると進行が飛ぶ
-      const next = freshSettings(new Date());
-      next.loopMs = loopMs;
+      const next: Settings = { ...freshSettings(new Date()), loopMs, ...(settings.openToAll ? { openToAll: true } : {}) };
       setSettings(next);
       progressRef.current = EMPTY_PROGRESS;
       setProgress(EMPTY_PROGRESS);
       await save(KV_SETTINGS, next);
       await save(KV_PROGRESS, EMPTY_PROGRESS);
     },
-    [save],
+    [save, settings.openToAll],
+  );
+
+  const setOpenToAll = useCallback(
+    async (on: boolean) => {
+      const next: Settings = { loopMs: settings.loopMs, startedAt: settings.startedAt, ...(on ? { openToAll: true } : {}) };
+      setSettings(next);
+      await save(KV_SETTINGS, next);
+    },
+    [save, settings.loopMs, settings.startedAt],
+  );
+
+  /**
+   * 相手が代理応答を使っていない相手に、代理を送る。
+   *
+   * 設定でオンにしたときだけ。台本はモデルを呼ばず、過去ログだけから作る。
+   * 作った瞬間の位置から現れて、一通目が届き始める。
+   */
+  const sendProxyTo = useCallback(
+    async (name: string) => {
+      const transcript = transcripts.find((t) => t.name === name);
+      if (!transcript || !intake || !settings.openToAll) return;
+      if (stored.some((s) => s.name === name)) return;
+      const phase = loopAt(new Date(), new Date(settings.startedAt).getTime(), settings.loopMs).phase / settings.loopMs;
+      const seed = soloSeedOf(transcript, intake.name, phase);
+      const next = [...stored, seed];
+      setStored(next);
+      await save(KV_SEEDS, next);
+    },
+    [intake, save, settings.loopMs, settings.openToAll, settings.startedAt, stored, transcripts],
   );
 
   const reset = useCallback(async () => {
@@ -697,6 +737,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       revert,
       startInherited,
       setLoopMs,
+      setOpenToAll,
+      sendProxyTo,
       reset,
     };
   }, [
@@ -728,7 +770,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     reset,
     revert,
     send,
+    sendProxyTo,
     setLoopMs,
+    setOpenToAll,
     settings,
     startInherited,
     threads,
